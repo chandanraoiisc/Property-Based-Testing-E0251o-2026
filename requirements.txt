@@ -1,0 +1,12 @@
+pytest
+hypothesis
+networkx
+numpy
+scipy
+matplotlib
+pandas
+scikit-learn
+seaborn
+community
+python-igraph
+python-louvain
