@@ -1,0 +1,29 @@
+brijgopalb@iisc.ac.in/graph_strategies.py
+  9162f11cdf742d80 1-251
+brijgopalb@iisc.ac.in/requirements.txt
+  9162f11cdf742d80 1-4
+brijgopalb@iisc.ac.in/README.md
+  9162f11cdf742d80 1-66
+brijgopalb@iisc.ac.in/test_floyd_warshall.py
+  9162f11cdf742d80 1-776
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "921166abf9303f65b4917fd64b9d4202b2674046",
+  "prompts": {
+    "9162f11cdf742d80": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "32e07b80-8d5c-42a4-aaf8-0937551f097a",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 1339,
+      "total_deletions": 56,
+      "accepted_lines": 1285,
+      "overriden_lines": 0
+    }
+  }
+}
