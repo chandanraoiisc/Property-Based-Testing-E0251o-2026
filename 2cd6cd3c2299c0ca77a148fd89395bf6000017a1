@@ -1,0 +1,25 @@
+brijgopalb@iisc.ac.in/graph_strategies.py
+  9162f11cdf742d80 9-23,27-32,34-35,45-47,55,69,97,115-123,130,158-189,199-286,288,294-298,305-308,315-318,327,377-380,387-439
+brijgopalb@iisc.ac.in/.gitignore
+  9162f11cdf742d80 1-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "2cd6cd3c2299c0ca77a148fd89395bf6000017a1",
+  "prompts": {
+    "9162f11cdf742d80": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "32e07b80-8d5c-42a4-aaf8-0937551f097a",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 0,
+      "accepted_lines": 464,
+      "overriden_lines": 0
+    }
+  }
+}
