@@ -1,0 +1,27 @@
+brijgopalb@iisc.ac.in/graph_strategies.py
+  9162f11cdf742d80 5-7,13-15,17-19,21-25,29-30,45-48,53,139-144,229,284-286,293-296,306-308
+brijgopalb@iisc.ac.in/test_floyd_warshall.py
+  9162f11cdf742d80 9-10,21,29-32,72,77,81,94-97,100,114,122,125,138-139,160,164,175,196,200,203,218,222-223,238,247,252,256,260,265,269,274,278-280,309,314,358,362,400,405,409-411,419-420,422,429,460,465-466,477,482,486,513,517,520-521,561,571-574,605,610,618,624,631,650,654,658,695,742,746,764
+brijgopalb@iisc.ac.in/README.md
+  9162f11cdf742d80 1,3,6-7,10-12,14-19,21,23-41,43,52-117,119-239,241-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "9cbea6954d11cdd9c05eeea3a8695b61c882a295",
+  "prompts": {
+    "9162f11cdf742d80": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "32e07b80-8d5c-42a4-aaf8-0937551f097a",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 346,
+      "total_deletions": 275,
+      "accepted_lines": 345,
+      "overriden_lines": 0
+    }
+  }
+}
