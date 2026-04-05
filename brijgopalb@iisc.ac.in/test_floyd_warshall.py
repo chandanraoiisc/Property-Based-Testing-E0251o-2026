@@ -6,7 +6,8 @@ Team member : Brijgopal Bharadwaj (brijgopalb@iisc.ac.in)
 Algorithm   : Floyd-Warshall all-pairs shortest paths
 Module      : networkx.algorithms.shortest_paths.dense
 
-Functions under test:
+Functions under test
+--------------------
   1. nx.floyd_warshall(G, weight)
   2. nx.floyd_warshall_predecessor_and_distance(G, weight)
   3. nx.floyd_warshall_numpy(G, nodelist, weight)
@@ -17,6 +18,7 @@ via the companion ``graph_strategies`` module.
 """
 
 import math
+import random
 
 import networkx as nx
 import numpy as np
@@ -24,15 +26,12 @@ import hypothesis.strategies as st
 from hypothesis import given, assume, settings, HealthCheck
 
 from graph_strategies import (
-    positive_weighted_digraph,
-    nonneg_weighted_digraph,
-    undirected_nonneg_graph,
+    graph_builder,
+    random_graph_topology,
+    disconnected_graph_topology,
+    empty_graph_topology,
     dag_with_weights,
     negative_cycle_digraph,
-    disconnected_weighted_digraph,
-    positive_weighted_undirected,
-    mixed_topology_weighted_digraph,
-    empty_graph_topology,
 )
 
 INF = float("inf")
@@ -70,16 +69,16 @@ def _path_weight(G, path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# INVARIANT PROPERTIES (Tests 1 – 5)
+# INVARIANT PROPERTIES (Tests 1 - 5)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 1 – Zero self-distance
+# Test 1 - Zero self-distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=mixed_topology_weighted_digraph())
+@given(G=graph_builder())
 def test_zero_self_distance(G):
     """
     Property: For every node v in a graph without negative cycles,
@@ -92,12 +91,13 @@ def test_zero_self_distance(G):
     distance in graphs without negative cycles.
 
     Test strategy: Generate directed graphs drawn from a mix of topologies
-    (Erdős–Rényi, complete, path, cycle, star, tree) with positive integer
-    edge weights.  Positive weights guarantee no negative cycles.  Compute
-    all-pairs distances with floyd_warshall and verify every diagonal entry.
+    (Erdos-Renyi, complete, path, cycle, star, tree) with positive integer
+    edge weights via ``graph_builder()``.  Positive weights guarantee no
+    negative cycles.  Compute all-pairs distances with floyd_warshall and
+    verify every diagonal entry.
 
     Assumptions / preconditions:
-      - All edge weights are positive (≥ 1), so no negative cycles exist.
+      - All edge weights are positive (>= 1), so no negative cycles exist.
 
     Why failure matters: A non-zero self-distance would mean the algorithm
     believes it costs something to stay in place, indicating a fundamental
@@ -111,7 +111,7 @@ def test_zero_self_distance(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 2 – Triangle inequality
+# Test 2 - Triangle inequality
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -119,10 +119,10 @@ def test_zero_self_distance(G):
 def test_triangle_inequality(G):
     """
     Property: For all nodes u, v, w in G:
-        dist(u, w) ≤ dist(u, v) + dist(v, w)
+        dist(u, w) <= dist(u, v) + dist(v, w)
 
     Mathematical basis: If there is a path from u to v of cost d1 and a path
-    from v to w of cost d2, then concatenating them gives a u→w walk of cost
+    from v to w of cost d2, then concatenating them gives a u->w walk of cost
     d1 + d2.  The shortest path can only be shorter or equal, never longer.
     This is the defining property of a shortest-path metric.  It holds
     whenever no negative cycles exist (which a DAG guarantees).
@@ -135,8 +135,8 @@ def test_triangle_inequality(G):
     Assumptions / preconditions:
       - Graph is a DAG, so no negative cycles can exist.
 
-    Why failure matters: A violation means the algorithm found paths to u→v
-    and v→w whose costs sum to less than the supposed shortest u→w path.
+    Why failure matters: A violation means the algorithm found paths to u->v
+    and v->w whose costs sum to less than the supposed shortest u->w path.
     This implies the algorithm missed a shorter route through v, a critical
     correctness bug.
     """
@@ -157,11 +157,11 @@ def test_triangle_inequality(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 3 – Symmetry on undirected graphs
+# Test 3 - Symmetry on undirected graphs
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_undirected())
+@given(G=graph_builder(topology=random_graph_topology, directed=False))
 def test_symmetry_undirected(G):
     """
     Property: For an undirected graph, dist(u, v) == dist(v, u) for all
@@ -172,7 +172,7 @@ def test_symmetry_undirected(G):
     from u to v can be reversed to obtain a path from v to u with the
     same total weight, giving dist(u, v) = dist(v, u).
 
-    Test strategy: Generate undirected Erdős–Rényi graphs with positive
+    Test strategy: Generate undirected Erdos-Renyi graphs with positive
     integer weights and verify pairwise symmetry of the distance matrix.
 
     Assumptions / preconditions:
@@ -193,14 +193,14 @@ def test_symmetry_undirected(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 4 – Reconstructed path weight equals reported distance
+# Test 4 - Reconstructed path weight equals reported distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_digraph())
+@given(G=graph_builder(topology=random_graph_topology))
 def test_path_weight_equals_distance(G):
     """
-    Property: For every reachable pair (s, t) with s ≠ t, the path
+    Property: For every reachable pair (s, t) with s != t, the path
     reconstructed via reconstruct_path has total edge weight equal to the
     distance reported by floyd_warshall_predecessor_and_distance.
 
@@ -215,12 +215,12 @@ def test_path_weight_equals_distance(G):
 
     Assumptions / preconditions:
       - Only pairs where a finite-distance path exists are checked.
-      - s ≠ t (reconstruct_path returns [] when s == t).
+      - s != t (reconstruct_path returns [] when s == t).
 
     Why failure matters: Inconsistency between predecessors and distances
     means the path the algorithm claims is shortest does not actually have
-    the claimed cost—either the distance is wrong or the predecessor chain
-    is broken.
+    the claimed cost -- either the distance is wrong or the predecessor
+    chain is broken.
     """
     pred, dist = _fw_pred_dist(G)
     nodes = list(G.nodes())
@@ -235,7 +235,7 @@ def test_path_weight_equals_distance(G):
 
             path = nx.reconstruct_path(s, t, pred)
             assert len(path) >= 2, (
-                f"Path from {s} to {t} should have ≥ 2 nodes, got {path}"
+                f"Path from {s} to {t} should have >= 2 nodes, got {path}"
             )
             assert path[0] == s and path[-1] == t, (
                 f"Path endpoints wrong: expected ({s},{t}), got ({path[0]},{path[-1]})"
@@ -244,40 +244,40 @@ def test_path_weight_equals_distance(G):
             actual_weight = _path_weight(G, path)
             assert abs(actual_weight - d_st) < 1e-9, (
                 f"Path weight {actual_weight} != reported distance {d_st} "
-                f"for {s}→{t}, path={path}"
+                f"for {s}->{t}, path={path}"
             )
 
 
 # ---------------------------------------------------------------------------
-# Test 5 – Subpath optimality
+# Test 5 - Subpath optimality
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_digraph(min_nodes=3, max_nodes=10))
+@given(G=graph_builder(topology=random_graph_topology, min_nodes=3, max_nodes=10))
 def test_subpath_optimality(G):
     """
     Property: Every sub-path of a shortest path is itself a shortest path.
-    Formally, if P = [s, ..., a, ..., b, ..., t] is a shortest s→t path,
+    Formally, if P = [s, ..., a, ..., b, ..., t] is a shortest s->t path,
     then the sub-path from a to b within P has total weight equal to
     dist(a, b).
 
     Mathematical basis: This is Bellman's principle of optimality.  If a
-    sub-path a→b were not optimal, we could replace it with a shorter one,
+    sub-path a->b were not optimal, we could replace it with a shorter one,
     contradicting the optimality of the full path P.
 
     Test strategy: Generate directed graphs with positive weights, compute
-    shortest paths, and for every path with ≥ 3 nodes verify that each
+    shortest paths, and for every path with >= 3 nodes verify that each
     contiguous sub-path has cost equal to the all-pairs shortest distance.
 
     Assumptions / preconditions:
       - Positive weights ensure no negative cycles.
-      - Only paths with ≥ 3 nodes are interesting (sub-paths of 2-node
+      - Only paths with >= 3 nodes are interesting (sub-paths of 2-node
         paths are trivially single edges).
 
     Why failure matters: Violation of subpath optimality means the
-    algorithm's predecessor chain is globally inconsistent—it encodes a path
-    that is not actually shortest, even though the distance value might be
-    correct.
+    algorithm's predecessor chain is globally inconsistent -- it encodes a
+    path that is not actually shortest, even though the distance value
+    might be correct.
     """
     pred, dist = _fw_pred_dist(G)
     nodes = list(G.nodes())
@@ -306,12 +306,12 @@ def test_subpath_optimality(G):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# CROSS-IMPLEMENTATION CONSISTENCY (Tests 6 – 7)
+# CROSS-IMPLEMENTATION CONSISTENCY (Tests 6 - 7)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 6 – floyd_warshall dict vs floyd_warshall_predecessor_and_distance
+# Test 6 - floyd_warshall dict vs floyd_warshall_predecessor_and_distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -355,11 +355,11 @@ def test_fw_dict_vs_pred_dist(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 7 – floyd_warshall dict vs floyd_warshall_numpy
+# Test 7 - floyd_warshall dict vs floyd_warshall_numpy
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_digraph())
+@given(G=graph_builder(topology=random_graph_topology))
 def test_fw_dict_vs_numpy(G):
     """
     Property: The distance dictionary from floyd_warshall and the NumPy
@@ -397,33 +397,36 @@ def test_fw_dict_vs_numpy(G):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# METAMORPHIC PROPERTIES (Tests 8 – 11)
+# METAMORPHIC PROPERTIES (Tests 8 - 11)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 8 – Weight scaling
+# Test 8 - Weight scaling
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_digraph(), k=st.integers(min_value=2, max_value=10))
+@given(
+    G=graph_builder(topology=random_graph_topology),
+    k=st.integers(min_value=2, max_value=10),
+)
 def test_weight_scaling(G, k):
     """
     Property: Multiplying every edge weight by a positive constant k
     multiplies all finite shortest-path distances by k.  Infinite distances
     (unreachable pairs) remain infinite.
 
-    Mathematical basis: If P is a shortest s→t path with weight W(P), then
-    under scaling each edge by k the same path has weight k·W(P).  Since
+    Mathematical basis: If P is a shortest s->t path with weight W(P), then
+    under scaling each edge by k the same path has weight k*W(P).  Since
     scaling preserves the ordering of path weights, P remains optimal.
-    Hence dist_scaled(s,t) = k · dist_original(s,t) for all reachable
+    Hence dist_scaled(s,t) = k * dist_original(s,t) for all reachable
     pairs.
 
     Test strategy: Compute distances on the original graph, scale all
     weights by k, recompute, and verify the ratio.
 
     Assumptions / preconditions:
-      - k ≥ 2 (non-trivial scaling).
+      - k >= 2 (non-trivial scaling).
       - All original weights are positive.
 
     Why failure matters: A wrong ratio means the algorithm's relaxation is
@@ -454,12 +457,13 @@ def test_weight_scaling(G, k):
 
 
 # ---------------------------------------------------------------------------
-# Test 9 – Adding a non-negative edge can only decrease distances
+# Test 9 - Adding a non-negative edge can only decrease distances
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
 @given(
-    G=nonneg_weighted_digraph(min_nodes=3, max_nodes=10),
+    G=graph_builder(
+        topology=random_graph_topology, min_nodes=3, max_nodes=10, min_weight=0),
     w=st.integers(min_value=0, max_value=50),
 )
 def test_edge_addition_monotonicity(G, w):
@@ -470,16 +474,16 @@ def test_edge_addition_monotonicity(G, w):
     Mathematical basis: Adding an edge introduces a new potential path
     segment.  For any pair (u, v), the new shortest distance is
     min(old_dist(u,v), old_dist(u,a) + w(a,b) + old_dist(b,v)) where (a,b)
-    is the new edge.  Since w ≥ 0 and the min operator can only shrink,
+    is the new edge.  Since w >= 0 and the min operator can only shrink,
     distances are monotonically non-increasing under edge addition.
 
     Test strategy: Compute distances on the original graph, add a random
     non-negative-weight edge between two nodes that are not already
-    connected, recompute, and verify every distance is ≤ the original.
+    connected, recompute, and verify every distance is <= the original.
 
     Assumptions / preconditions:
       - All existing weights are non-negative.
-      - The new edge weight w ≥ 0.
+      - The new edge weight w >= 0.
       - There exists at least one non-edge to add.
 
     Why failure matters: An increased distance after adding an edge would
@@ -506,15 +510,15 @@ def test_edge_addition_monotonicity(G, w):
 
 
 # ---------------------------------------------------------------------------
-# Test 10 – Subgraph distances are a lower bound
+# Test 10 - Subgraph distances are a lower bound
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_digraph(min_nodes=4, max_nodes=10))
+@given(G=graph_builder(topology=random_graph_topology, min_nodes=4, max_nodes=10))
 def test_subgraph_distance_lower_bound(G):
     """
-    Property: For a subgraph H ⊆ G (same nodes, subset of edges),
-    dist_G(u,v) ≤ dist_H(u,v) for all u, v.
+    Property: For a subgraph H of G (same nodes, subset of edges),
+    dist_G(u,v) <= dist_H(u,v) for all u, v.
 
     Mathematical basis: H has fewer edges than G, so fewer candidate paths
     between any pair.  The minimum over a subset cannot be smaller than the
@@ -534,7 +538,6 @@ def test_subgraph_distance_lower_bound(G):
     """
     assume(G.number_of_edges() >= 2)
 
-    import random
     rng = random.Random(42)
     H = G.copy()
     edges_to_remove = [e for e in H.edges() if rng.random() < 0.5]
@@ -555,7 +558,7 @@ def test_subgraph_distance_lower_bound(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 11 – Reversing edges transposes the distance matrix
+# Test 11 - Reversing edges transposes the distance matrix
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -565,10 +568,10 @@ def test_graph_reversal_transposes_distances(G):
     Property: For a digraph G and its reverse G^R (all edges flipped),
     dist_G(u, v) == dist_{G^R}(v, u) for all node pairs.
 
-    Mathematical basis: Every path u → x₁ → … → xₖ → v in G corresponds
-    to the reversed path v → xₖ → … → x₁ → u in G^R with the same total
-    weight.  This bijection preserves path weights, so the shortest u→v
-    path in G maps to the shortest v→u path in G^R.
+    Mathematical basis: Every path u -> x1 -> ... -> xk -> v in G
+    corresponds to the reversed path v -> xk -> ... -> x1 -> u in G^R
+    with the same total weight.  This bijection preserves path weights,
+    so the shortest u->v path in G maps to the shortest v->u path in G^R.
 
     Test strategy: Generate DAGs with mixed-sign weights (no negative
     cycles by construction), compute distances on both G and its reverse,
@@ -599,12 +602,12 @@ def test_graph_reversal_transposes_distances(G):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# BOUNDARY / EDGE-CASE PROPERTIES (Tests 12 – 14)
+# BOUNDARY / EDGE-CASE PROPERTIES (Tests 12 - 14)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 12 – Empty graph: all off-diagonal distances are infinite
+# Test 12 - Empty graph: all off-diagonal distances are infinite
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -612,20 +615,20 @@ def test_graph_reversal_transposes_distances(G):
 def test_empty_graph_distances(G):
     """
     Property: In a graph with n nodes and zero edges, dist(v, v) = 0 for
-    all v, and dist(u, v) = ∞ for all u ≠ v.
+    all v, and dist(u, v) = inf for all u != v.
 
     Mathematical basis: With no edges, no path of positive length exists
     between distinct nodes.  The only "path" is the trivial zero-length
     path from a node to itself.
 
-    Test strategy: Generate empty directed graphs of varying sizes (1–10
+    Test strategy: Generate empty directed graphs of varying sizes (1-10
     nodes) and verify every entry of the distance matrix.
 
     Assumptions / preconditions:
       - The graph has zero edges.
 
     Why failure matters: Wrong distances on the simplest possible input
-    (no edges) would indicate a fundamental initialisation bug—the
+    (no edges) would indicate a fundamental initialisation bug -- the
     algorithm is inventing paths that don't exist or failing to set the
     diagonal to zero.
     """
@@ -644,15 +647,15 @@ def test_empty_graph_distances(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 13 – Disconnected components produce infinite cross-distances
+# Test 13 - Disconnected components produce infinite cross-distances
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=disconnected_weighted_digraph())
+@given(G=graph_builder(topology=disconnected_graph_topology))
 def test_disconnected_components(G):
     """
     Property: If nodes u and v are in different weakly-connected components
-    of a directed graph, then dist(u, v) = ∞ and dist(v, u) = ∞.
+    of a directed graph, then dist(u, v) = inf and dist(v, u) = inf.
 
     Mathematical basis: A path from u to v requires a sequence of edges
     connecting them.  If u and v are in separate components, no such
@@ -689,7 +692,7 @@ def test_disconnected_components(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 14 – Negative cycle produces negative self-distance
+# Test 14 - Negative cycle produces negative self-distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
@@ -736,11 +739,11 @@ def test_negative_cycle_detection(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 15 – Idempotence: running twice yields identical results
+# Test 15 - Idempotence: running twice yields identical results
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
-@given(G=positive_weighted_digraph())
+@given(G=graph_builder(topology=random_graph_topology))
 def test_idempotence(G):
     """
     Property: Calling floyd_warshall (and floyd_warshall_numpy) twice on
@@ -758,7 +761,7 @@ def test_idempotence(G):
       - The graph is not mutated between calls.
 
     Why failure matters: Different results on repeated calls indicate
-    non-determinism—perhaps from uninitialised state, hash randomisation
+    non-determinism -- perhaps from uninitialised state, hash randomisation
     leaking into iteration order, or accidental mutation of the input
     graph.
     """

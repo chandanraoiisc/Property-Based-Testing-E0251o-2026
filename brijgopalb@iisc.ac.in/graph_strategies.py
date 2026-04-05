@@ -2,38 +2,35 @@
 Reusable Hypothesis Strategies for Generating NetworkX Graphs
 =============================================================
 
-A library of composable graph-generation strategies built on Hypothesis.
-Designed to be imported by any property-based test suite that needs diverse
-NetworkX graph inputs.
+A library of composable graph-generation strategies built on the
+Hypothesis property-based testing framework.  Designed to be imported
+by any test suite that needs diverse NetworkX graph inputs.
 
 Architecture
 ------------
 Three layers, each composable with the next:
 
-1. **Topology strategies** produce unweighted graph structure
-   (``random_graph_topology``, ``complete_graph_topology``, …).
+1. **Topology strategies** — produce unweighted graph structure.
+   Every topology strategy accepts ``(draw, min_nodes, max_nodes,
+   directed)`` so any of them can be plugged into ``graph_builder``.
 
-2. **Modifier strategies** mutate a graph in-place to add structural
-   edge-cases: self-loops, isolated nodes, uniform weights, etc.
+2. **Modifier helpers** — mutate a graph in-place to layer on
+   structural edge-cases: random weights, uniform weights, self-loops,
+   isolated nodes.
 
-3. **``graph_builder``** is the single composable entry-point that
-   combines a topology strategy + weight range + optional modifiers
-   into one call.  Named convenience wrappers
-   (``positive_weighted_digraph``, ``dag_with_weights``, …) are thin
-   calls to ``graph_builder`` kept for backward compatibility.
+3. **``graph_builder``** — the single composable entry-point that wires
+   a topology strategy + weight range + optional modifiers in one call.
+   Two specialized strategies (``dag_with_weights``,
+   ``negative_cycle_digraph``) have bespoke construction logic that
+   doesn't fit the generic builder, so they remain standalone.
 
 Usage
 -----
-    # Builder style (preferred for new code)
+::
+
     from graph_strategies import graph_builder, cycle_graph_topology
 
     @given(G=graph_builder(topology=cycle_graph_topology, min_weight=-5))
-    def test_something(G):
-        ...
-
-    # Named-wrapper style (still supported)
-    from graph_strategies import positive_weighted_digraph
-    @given(G=positive_weighted_digraph())
     def test_something(G):
         ...
 """
@@ -45,10 +42,15 @@ import hypothesis.strategies as st
 # ═══════════════════════════════════════════════════════════════════════
 # Layer 1 — Topology strategies (unweighted structure)
 # ═══════════════════════════════════════════════════════════════════════
+#
+# Every topology strategy has the uniform signature
+#     (draw, min_nodes, max_nodes, directed)
+# so that graph_builder can call any of them interchangeably.
+# ═══════════════════════════════════════════════════════════════════════
 
 @st.composite
 def random_graph_topology(draw, min_nodes=2, max_nodes=15, directed=True):
-    """Erdős–Rényi G(n, p) topology."""
+    """Erdos-Renyi G(n, p) topology."""
     n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
     p = draw(st.floats(min_value=0.1, max_value=1.0))
     seed = draw(st.integers(min_value=0, max_value=2**32 - 1))
@@ -113,15 +115,6 @@ def empty_graph_topology(draw, min_nodes=1, max_nodes=10, directed=True):
 
 
 @st.composite
-def single_node_topology(draw, directed=True):
-    """Graph with exactly one node and no edges."""
-    _ = draw(st.just(None))
-    if directed:
-        return nx.empty_graph(1, create_using=nx.DiGraph)
-    return nx.empty_graph(1)
-
-
-@st.composite
 def disconnected_graph_topology(draw, min_nodes=4, max_nodes=14, directed=True):
     """Two disjoint cliques with no edges between them."""
     n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
@@ -143,8 +136,12 @@ def disconnected_graph_topology(draw, min_nodes=4, max_nodes=14, directed=True):
 
 
 @st.composite
-def dag_topology(draw, min_nodes=2, max_nodes=15):
-    """Random DAG: edges only go from lower-index to higher-index nodes."""
+def dag_topology(draw, min_nodes=2, max_nodes=15, directed=True):
+    """Random DAG: edges only go from lower-index to higher-index nodes.
+
+    DAGs are inherently directed.  The ``directed`` parameter is accepted
+    for API consistency with other topologies but has no effect.
+    """
     n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
     G = nx.DiGraph()
     G.add_nodes_from(range(n))
@@ -229,7 +226,7 @@ def _add_isolated_nodes(draw, G, min_isolates=1, max_isolates=3):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Layer 3 — Composable builder + named convenience wrappers
+# Layer 3 — Composable builder
 # ═══════════════════════════════════════════════════════════════════════
 
 @st.composite
@@ -284,47 +281,19 @@ def graph_builder(draw,
     return G
 
 
-# ───────────────────────────────────────────────────────────────────────
-# Named convenience wrappers (backward-compatible public API)
-# ───────────────────────────────────────────────────────────────────────
-
-@st.composite
-def positive_weighted_digraph(draw, min_nodes=2, max_nodes=12,
-                              min_weight=1, max_weight=50):
-    """Directed graph with positive integer weights (Erdos-Renyi)."""
-    return draw(graph_builder(
-        topology=random_graph_topology, directed=True,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight))
-
-
-@st.composite
-def nonneg_weighted_digraph(draw, min_nodes=2, max_nodes=12,
-                            min_weight=0, max_weight=50):
-    """Directed graph with non-negative integer weights (allows zero)."""
-    return draw(graph_builder(
-        topology=random_graph_topology, directed=True,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight))
-
-
-@st.composite
-def undirected_nonneg_graph(draw, min_nodes=2, max_nodes=12,
-                            min_weight=0, max_weight=50):
-    """Undirected graph with non-negative integer weights."""
-    return draw(graph_builder(
-        topology=random_graph_topology, directed=False,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight))
-
+# ═══════════════════════════════════════════════════════════════════════
+# Specialized strategies (bespoke construction that doesn't fit builder)
+# ═══════════════════════════════════════════════════════════════════════
 
 @st.composite
 def dag_with_weights(draw, min_nodes=2, max_nodes=15,
                      min_weight=-10, max_weight=20):
     """DAG with arbitrary (including negative) integer weights.
 
-    Because a DAG has no cycles at all, negative edge weights are safe for
-    shortest-path algorithms -- there can never be a negative-weight cycle.
+    Because a DAG has no cycles at all, negative edge weights are safe
+    for shortest-path algorithms -- there can never be a negative-weight
+    cycle.  Uses ``dag_topology`` directly rather than ``graph_builder``
+    because the DAG edge-ordering invariant (i < j) must be preserved.
     """
     G = draw(dag_topology(min_nodes=min_nodes, max_nodes=max_nodes))
     return _assign_weights(draw, G, min_weight, max_weight)
@@ -334,8 +303,9 @@ def dag_with_weights(draw, min_nodes=2, max_nodes=15,
 def negative_cycle_digraph(draw, min_nodes=3, max_nodes=10):
     """Directed graph guaranteed to contain at least one negative-weight cycle.
 
-    Construction: build a directed cycle on n nodes, assign weights so that
-    the total cycle weight is negative, then optionally add extra edges.
+    Construction: build a directed cycle on n nodes, assign weights so
+    that the total cycle weight is negative, then optionally sprinkle
+    extra positive-weight edges.
     """
     n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
     G = nx.DiGraph()
@@ -359,81 +329,3 @@ def negative_cycle_digraph(draw, min_nodes=3, max_nodes=10):
                 G.add_edge(i, j, weight=w)
 
     return G
-
-
-@st.composite
-def disconnected_weighted_digraph(draw, min_nodes=4, max_nodes=14,
-                                  min_weight=1, max_weight=50):
-    """Directed graph with multiple components and positive weights."""
-    G = draw(disconnected_graph_topology(
-        min_nodes=min_nodes, max_nodes=max_nodes, directed=True))
-    return _assign_weights(draw, G, min_weight, max_weight)
-
-
-@st.composite
-def positive_weighted_undirected(draw, min_nodes=2, max_nodes=12,
-                                 min_weight=1, max_weight=50):
-    """Undirected graph with positive integer weights."""
-    return draw(graph_builder(
-        topology=random_graph_topology, directed=False,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight))
-
-
-@st.composite
-def mixed_topology_weighted_digraph(draw, min_nodes=2, max_nodes=12,
-                                    min_weight=1, max_weight=50):
-    """Draw from a mix of topologies for broader coverage."""
-    return draw(graph_builder(
-        topology=None, directed=True,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight))
-
-
-# ───────────────────────────────────────────────────────────────────────
-# Hybrid edge-case strategies
-# ───────────────────────────────────────────────────────────────────────
-
-@st.composite
-def graph_with_self_loops(draw, min_nodes=2, max_nodes=10,
-                          min_weight=1, max_weight=50):
-    """Directed graph with positive-weight self-loops on some nodes.
-
-    Self-loops should not change shortest-path distances (dist(v,v) stays 0
-    when all self-loop weights are positive).
-    """
-    return draw(graph_builder(
-        topology=None, directed=True,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight,
-        self_loops=True))
-
-
-@st.composite
-def uniform_weight_digraph(draw, min_nodes=2, max_nodes=12,
-                           min_weight=1, max_weight=50):
-    """Directed graph where every edge has the same weight.
-
-    When all edges have weight w, shortest-path distance equals
-    w * (hop count of the BFS shortest path).
-    """
-    return draw(graph_builder(
-        topology=None, directed=True,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight,
-        uniform_weight=True))
-
-
-@st.composite
-def graph_with_isolated_nodes(draw, min_nodes=3, max_nodes=10,
-                              min_weight=1, max_weight=50):
-    """Directed graph with guaranteed isolated vertices (degree 0).
-
-    Isolated nodes must have dist(v, u) = inf for all u != v and
-    dist(v, v) = 0.
-    """
-    return draw(graph_builder(
-        topology=random_graph_topology, directed=True,
-        min_nodes=min_nodes, max_nodes=max_nodes,
-        min_weight=min_weight, max_weight=max_weight,
-        isolated_nodes=True))
