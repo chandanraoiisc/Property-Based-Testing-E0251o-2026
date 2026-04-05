@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "a2c0b19abd5c943ada53074b3ab2527ac081b73e",
+  "prompts": {
+    "9162f11cdf742d80": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "32e07b80-8d5c-42a4-aaf8-0937551f097a",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 439,
+      "overriden_lines": 0
+    }
+  }
+}
