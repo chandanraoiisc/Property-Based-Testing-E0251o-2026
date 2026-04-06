@@ -25,7 +25,9 @@ property-based testing: triangle inequality, subpath optimality (Bellman's
 principle), symmetry in undirected graphs, transpose relationships under
 edge reversal, and linear scaling under weight multiplication.  It also
 has three distinct implementations in NetworkX (dict, dict+predecessors,
-numpy) whose outputs can be cross-validated against each other.
+numpy) whose outputs can be cross-validated against each other, plus two
+independent algorithms (Dijkstra, Bellman-Ford) that serve as external
+oracles for differential testing.
 
 ---
 
@@ -33,12 +35,15 @@ numpy) whose outputs can be cross-validated against each other.
 
 ```
 brijgopalb@iisc.ac.in/
-├── graph_strategies.py      # Reusable Hypothesis graph generation library
-├── test_floyd_warshall.py   # 15 property-based tests with detailed docstrings
+├── test_floyd_warshall.py   # Single self-contained file: strategies + 20 property tests + bug discovery
 ├── requirements.txt         # Python dependencies
 ├── .gitignore               # Excludes __pycache__, .hypothesis/, .pytest_cache/
 └── README.md                # This file
 ```
+
+The project follows the rubric requirement of a **single Python file**
+containing all imports, graph-generation strategies, helper functions,
+and property-based tests with detailed docstrings.
 
 ---
 
@@ -49,12 +54,18 @@ pip install -r requirements.txt
 pytest test_floyd_warshall.py -v
 ```
 
-Tested against **NetworkX >= 3.4**, **Hypothesis >= 6.0**, **NumPy >= 1.24**,
+To view Hypothesis statistics (showing `event()` and `target()` output):
+
+```bash
+pytest test_floyd_warshall.py -v --hypothesis-show-statistics
+```
+
+Tested against **NetworkX 3.6.1**, **Hypothesis >= 6.0**, **NumPy >= 1.24**,
 **Python 3.12**.
 
 ---
 
-## Graph Generation Library (`graph_strategies.py`)
+## Graph Generation Library
 
 ### Design Decision: Functions over Classes
 
@@ -102,7 +113,7 @@ Every topology strategy has a uniform signature
 **Layer 3 -- `graph_builder()`** is the single composable entry-point:
 
 ```python
-from graph_strategies import graph_builder, cycle_graph_topology
+from test_floyd_warshall import graph_builder, cycle_graph_topology
 
 # Mixed topologies, positive weights (default)
 @given(G=graph_builder())
@@ -144,14 +155,14 @@ coverage:
 
 ---
 
-## Properties Tested (15 tests)
+## Properties Tested (20 tests + 1 bug discovery)
 
 ### Invariant Properties (Tests 1-5)
 
 | # | Test | Property | Generator |
 |---|------|----------|-----------|
-| 1 | `test_zero_self_distance` | dist(v, v) == 0 for all v (no negative cycles) | `graph_builder()` (mixed topologies) |
-| 2 | `test_triangle_inequality` | dist(u, w) <= dist(u, v) + dist(v, w) | `dag_with_weights()` |
+| 1 | `test_zero_self_distance` | dist(v, v) == 0 for all v (no negative cycles) | `graph_builder()` + `@example` with self-loop graph |
+| 2 | `test_triangle_inequality` | dist(u, w) <= dist(u, v) + dist(v, w) | `dag_with_weights()` + `target()` |
 | 3 | `test_symmetry_undirected` | dist(u, v) == dist(v, u) in undirected graphs | `graph_builder(directed=False)` |
 | 4 | `test_path_weight_equals_distance` | reconstruct_path weight matches reported dist | `graph_builder(topology=random_graph_topology)` |
 | 5 | `test_subpath_optimality` | Every sub-path of a shortest path is optimal (Bellman) | `graph_builder(topology=random_graph_topology)` |
@@ -163,39 +174,127 @@ coverage:
 | 6 | `test_fw_dict_vs_pred_dist` | `floyd_warshall` == `floyd_warshall_predecessor_and_distance` | `dag_with_weights()` |
 | 7 | `test_fw_dict_vs_numpy` | `floyd_warshall` dict == `floyd_warshall_numpy` matrix | `graph_builder(topology=random_graph_topology)` |
 
-### Metamorphic Properties (Tests 8-11)
+### Cross-Algorithm Validation (Tests 8-9)
 
 | # | Test | Property | Generator |
 |---|------|----------|-----------|
-| 8 | `test_weight_scaling` | Scaling weights by k scales distances by k | `graph_builder(topology=random_graph_topology)` |
-| 9 | `test_edge_addition_monotonicity` | Adding a non-negative edge can only decrease distances | `graph_builder(min_weight=0)` |
-| 10 | `test_subgraph_distance_lower_bound` | dist_G(u,v) <= dist_H(u,v) for subgraph H of G | `graph_builder(topology=random_graph_topology)` |
-| 11 | `test_graph_reversal_transposes_distances` | dist_G(u,v) == dist_{G^R}(v,u) | `dag_with_weights()` |
+| 8 | `test_fw_vs_dijkstra` | FW distances match Dijkstra (non-negative weights) | `graph_builder(topology=random_graph_topology)` + `event()` |
+| 9 | `test_fw_vs_bellman_ford` | FW distances match Bellman-Ford (negative weights, no neg cycles) | `dag_with_weights()` |
 
-### Boundary / Edge-Case Properties (Tests 12-14)
+### Metamorphic Properties (Tests 10-14)
 
 | # | Test | Property | Generator |
 |---|------|----------|-----------|
-| 12 | `test_empty_graph_distances` | Zero edges: diagonal=0, off-diagonal=inf | `empty_graph_topology()` |
-| 13 | `test_disconnected_components` | Cross-component distances are infinite | `graph_builder(topology=disconnected_graph_topology)` |
-| 14 | `test_negative_cycle_detection` | Negative cycle produces dist(u,u) < 0 | `negative_cycle_digraph()` |
+| 10 | `test_weight_scaling` | Scaling weights by k scales distances by k | `graph_builder(topology=random_graph_topology)` |
+| 11 | `test_edge_addition_monotonicity` | Adding a non-negative edge can only decrease distances | `graph_builder(min_weight=0)` + `data.draw()` |
+| 12 | `test_subgraph_distance_lower_bound` | dist_G(u,v) <= dist_H(u,v) for subgraph H of G | `graph_builder(topology=random_graph_topology)` + `data.draw()` |
+| 13 | `test_graph_reversal_transposes_distances` | dist_G(u,v) == dist_{G^R}(v,u) | `dag_with_weights()` |
+| 14 | `test_node_addition_invariance` | Adding an isolated node preserves all existing distances | `graph_builder(topology=random_graph_topology)` |
 
-### Idempotence / Determinism (Test 15)
+### Boundary / Edge-Case Properties (Tests 15-18)
 
 | # | Test | Property | Generator |
 |---|------|----------|-----------|
-| 15 | `test_idempotence` | Calling FW twice on same graph gives identical output | `graph_builder(topology=random_graph_topology)` |
+| 15 | `test_single_node_self_distance` | Single node: dist(v,v) = 0 | Parametric on `node_id` |
+| 16 | `test_empty_graph_distances` | Zero edges: diagonal=0, off-diagonal=inf | `empty_graph_topology()` |
+| 17 | `test_disconnected_components` | Cross-component distances are infinite | `graph_builder(topology=disconnected_graph_topology)` |
+| 18 | `test_negative_cycle_detection` | Negative cycle produces dist(u,u) < 0 | `negative_cycle_digraph()` |
+
+### Postcondition Properties (Test 19)
+
+| # | Test | Property | Generator |
+|---|------|----------|-----------|
+| 19 | `test_complete_graph_uniform_weight` | Complete digraph with uniform weight w: dist(u,v) = w | Parametric on `n`, `w` |
+
+### Idempotence / Determinism (Test 20)
+
+| # | Test | Property | Generator |
+|---|------|----------|-----------|
+| 20 | `test_idempotence` | Calling FW twice on same graph gives identical output | `graph_builder(topology=random_graph_topology)` |
+
+### Bug Discovery
+
+| Test | Finding |
+|------|---------|
+| `test_negative_cycle_silent_failure` | Floyd-Warshall silently returns invalid results on negative cycles, unlike Bellman-Ford and Johnson which raise `NetworkXUnbounded` |
+
+---
+
+## Bug Discovery: Silent Failure on Negative Cycles
+
+### Summary
+
+Floyd-Warshall silently returns invalid distance values when the input
+graph contains a negative-weight cycle.  In contrast, NetworkX's other
+shortest-path algorithms (`single_source_bellman_ford`,
+`johnson`) raise `NetworkXUnbounded` on the same input.
+
+### Minimal Reproducer
+
+```python
+import networkx as nx
+
+G = nx.DiGraph()
+G.add_weighted_edges_from([(0, 1, 1), (1, 2, 1), (2, 0, -5)])
+
+# Bellman-Ford correctly detects the negative cycle:
+nx.single_source_bellman_ford_path_length(G, 0)
+# → raises NetworkXUnbounded("Negative cycle detected.")
+
+# Johnson correctly detects the negative cycle:
+nx.johnson(G)
+# → raises NetworkXUnbounded("Negative cycle detected.")
+
+# Floyd-Warshall silently returns meaningless distances:
+dist = nx.floyd_warshall(G)
+# → {0: {0: -3, 1: -2, 2: -1}, 1: {0: -4, 1: -3, 2: -2}, 2: {0: -8, 1: -7, 2: -6}}
+# No exception, no warning.
+```
+
+### Root Cause
+
+The Floyd-Warshall source code (`floyd_warshall_predecessor_and_distance`)
+performs the standard triple-nested relaxation loop without any negative-
+cycle detection.  The docstring states "This algorithm can still fail if
+there are negative cycles" but does not define what "fail" means, does not
+raise an exception, and does not emit a warning.
+
+### Impact
+
+A user migrating from Bellman-Ford to Floyd-Warshall silently loses
+negative-cycle protection.  The returned distances look structurally valid
+(same `dict[dict]` format) but contain meaningless values, risking silent
+data corruption in downstream analysis.
+
+### Verified On
+
+- **NetworkX 3.6.1**, Python 3.12.10
+- All three FW variants affected: `floyd_warshall`, `floyd_warshall_predecessor_and_distance`, `floyd_warshall_numpy`
+
+---
+
+## Hypothesis Features Used
+
+| Feature | Where used | Purpose |
+|---|---|---|
+| `@st.composite` | All graph strategies | Build complex graph objects from primitive draws |
+| `@given` | All 20 property tests | Generate random inputs |
+| `@example` | Test 1 (self-loop graph) | Pin important edge cases |
+| `@settings` | All tests | Control `max_examples` and `suppress_health_check` |
+| `assume()` | Tests 11, 12, 17 | Skip invalid inputs |
+| `st.data()` | Tests 11, 12 | Draw values dependent on generated graph (proper shrinking) |
+| `event()` | Tests 1, 8 | Track topology/size distribution for coverage analysis |
+| `target()` | Test 2 | Guide generation toward denser DAGs |
 
 ---
 
 ## Key Design Decisions
 
-### 1. Functional strategies over class-based wrapper
+### 1. Single self-contained file
 
-Hypothesis strategies compose natively as functions.  A class would add
-indirection without improving composability.  Instead, `graph_builder()`
-serves as the single flexible entry-point that any topology, weight
-scheme, and modifier can be plugged into.
+The rubric requires "a single Python file" with all imports, strategies,
+helpers, and tests.  Graph generation strategies are embedded at the top
+of `test_floyd_warshall.py` rather than in a separate module.
 
 ### 2. Three-layer architecture for graph generation
 
@@ -211,20 +310,26 @@ exist.  Rather than generating random graphs and filtering for acyclicity
 (which wastes test budget), `dag_topology` guarantees acyclicity by
 construction: edges only go from lower-index to higher-index nodes.
 
-### 4. Adapted to installed NetworkX behaviour
+### 4. Cross-algorithm validation as differential testing
 
-The installed NetworkX (>= 3.4) does **not** raise `NetworkXUnbounded` for
-negative cycles -- instead, `floyd_warshall` returns negative diagonal
-entries `dist[v][v] < 0`.  Test 14 checks this actual behaviour rather
-than the documented-but-unimplemented exception.  The `floyd_warshall_tree`
-function exists only in the unreleased `main` branch and is excluded.
+Tests 8-9 validate Floyd-Warshall against Dijkstra (non-negative weights)
+and Bellman-Ford (negative weights on DAGs).  These are fundamentally
+different algorithms solving the same problem, so agreement provides
+stronger evidence of correctness than comparing three implementations of
+the same algorithm (Tests 6-7).
 
-### 5. Cross-implementation consistency as a testing strategy
+### 5. Hypothesis-controlled randomness for proper shrinking
 
-Tests 6-7 exploit the fact that NetworkX provides three independent
-implementations of Floyd-Warshall (dict, dict+predecessors, numpy).
-Comparing their outputs is a powerful differential testing technique that
-can catch bugs that no single-implementation property test would find.
+Tests 11 and 12 use `st.data().draw()` instead of Python's `random`
+module to select edges.  This allows Hypothesis to shrink failing examples
+to minimal counterexamples, which is critical for debugging.
+
+### 6. Adapted to installed NetworkX behaviour
+
+The installed NetworkX (3.6.1) does **not** raise exceptions for negative
+cycles -- instead, `floyd_warshall` returns negative diagonal entries.
+Test 18 checks this actual behaviour, and the bug discovery test documents
+the API inconsistency.
 
 ---
 

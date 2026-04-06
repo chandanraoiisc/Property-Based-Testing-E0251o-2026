@@ -13,35 +13,333 @@ Functions under test
   3. nx.floyd_warshall_numpy(G, nodelist, weight)
   4. nx.reconstruct_path(source, target, predecessors)
 
-All tests use the Hypothesis library to generate diverse graph structures
-via the companion ``graph_strategies`` module.
+This single file contains:
+  - Reusable Hypothesis graph-generation strategies (3-layer architecture)
+  - 20 property-based tests with detailed docstrings
+  - 1 bug-discovery test documenting an API inconsistency in NetworkX
+
+All tests use the Hypothesis library to generate diverse graph structures.
 """
 
 import math
-import random
 
 import networkx as nx
 import numpy as np
 import hypothesis.strategies as st
-from hypothesis import given, assume, settings, HealthCheck
-
-from graph_strategies import (
-    graph_builder,
-    random_graph_topology,
-    disconnected_graph_topology,
-    empty_graph_topology,
-    dag_with_weights,
-    negative_cycle_digraph,
-)
+from hypothesis import given, assume, settings, HealthCheck, example, event, target
 
 INF = float("inf")
 MAX_EXAMPLES = 80
 SLOW_OK = [HealthCheck.too_slow]
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# GRAPH GENERATION STRATEGIES
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Three composable layers:
+#   Layer 1 — Topology strategies  (unweighted structure)
+#   Layer 2 — Modifier helpers     (weights, self-loops, isolated nodes)
+#   Layer 3 — graph_builder()      (composes Layer 1 + Layer 2 in one call)
+#
+# Plus two standalone strategies with bespoke construction logic.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Layer 1 — Topology strategies
 # ---------------------------------------------------------------------------
+# Every topology strategy has the uniform signature
+#     (draw, min_nodes, max_nodes, directed)
+# so that graph_builder can call any of them interchangeably.
+# ---------------------------------------------------------------------------
+
+@st.composite
+def random_graph_topology(draw, min_nodes=2, max_nodes=15, directed=True):
+    """Erdos-Renyi G(n, p) topology."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    p = draw(st.floats(min_value=0.1, max_value=1.0))
+    seed = draw(st.integers(min_value=0, max_value=2**32 - 1))
+    return nx.gnp_random_graph(n, p, seed=seed, directed=directed)
+
+
+@st.composite
+def complete_graph_topology(draw, min_nodes=2, max_nodes=12, directed=True):
+    """Complete graph / complete digraph on n nodes."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    if directed:
+        return nx.complete_graph(n, create_using=nx.DiGraph)
+    return nx.complete_graph(n)
+
+
+@st.composite
+def path_graph_topology(draw, min_nodes=2, max_nodes=15, directed=True):
+    """Simple directed or undirected path 0 -> 1 -> ... -> n-1."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    if directed:
+        return nx.path_graph(n, create_using=nx.DiGraph)
+    return nx.path_graph(n)
+
+
+@st.composite
+def cycle_graph_topology(draw, min_nodes=3, max_nodes=15, directed=True):
+    """Directed or undirected cycle on n nodes."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    if directed:
+        return nx.cycle_graph(n, create_using=nx.DiGraph)
+    return nx.cycle_graph(n)
+
+
+@st.composite
+def star_graph_topology(draw, min_nodes=2, max_nodes=15, directed=True):
+    """Star graph with one hub connected to n-1 leaves."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    G = nx.star_graph(n - 1)
+    if directed:
+        return nx.DiGraph(G)
+    return G
+
+
+@st.composite
+def tree_graph_topology(draw, min_nodes=2, max_nodes=15, directed=True):
+    """Random labeled tree on n nodes (Prufer-sequence based)."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    seed = draw(st.integers(min_value=0, max_value=2**32 - 1))
+    T = nx.random_labeled_tree(n, seed=seed)
+    if directed:
+        return nx.DiGraph(T)
+    return T
+
+
+@st.composite
+def empty_graph_topology(draw, min_nodes=1, max_nodes=10, directed=True):
+    """Graph with n nodes and zero edges."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    if directed:
+        return nx.empty_graph(n, create_using=nx.DiGraph)
+    return nx.empty_graph(n)
+
+
+@st.composite
+def disconnected_graph_topology(draw, min_nodes=4, max_nodes=14, directed=True):
+    """Two disjoint cliques with no edges between them."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    split = draw(st.integers(min_value=1, max_value=n - 1))
+
+    G = nx.DiGraph() if directed else nx.Graph()
+    G.add_nodes_from(range(n))
+    for i in range(split):
+        for j in range(i + 1, split):
+            G.add_edge(i, j)
+            if directed:
+                G.add_edge(j, i)
+    for i in range(split, n):
+        for j in range(i + 1, n):
+            G.add_edge(i, j)
+            if directed:
+                G.add_edge(j, i)
+    return G
+
+
+@st.composite
+def dag_topology(draw, min_nodes=2, max_nodes=15, directed=True):
+    """Random DAG: edges only go from lower-index to higher-index nodes.
+
+    DAGs are inherently directed.  The ``directed`` parameter is accepted
+    for API consistency with other topologies but has no effect.
+    """
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    G = nx.DiGraph()
+    G.add_nodes_from(range(n))
+    for i in range(n):
+        for j in range(i + 1, n):
+            if draw(st.booleans()):
+                G.add_edge(i, j)
+    return G
+
+
+@st.composite
+def bipartite_graph_topology(draw, min_nodes=4, max_nodes=14, directed=True):
+    """Random bipartite graph with two partitions."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    split = draw(st.integers(min_value=1, max_value=n - 1))
+    left = range(split)
+    right = range(split, n)
+
+    G = nx.DiGraph() if directed else nx.Graph()
+    G.add_nodes_from(range(n))
+    for i in left:
+        for j in right:
+            if draw(st.booleans()):
+                G.add_edge(i, j)
+                if directed and draw(st.booleans()):
+                    G.add_edge(j, i)
+    return G
+
+
+ALL_TOPOLOGIES = [
+    random_graph_topology,
+    complete_graph_topology,
+    path_graph_topology,
+    cycle_graph_topology,
+    star_graph_topology,
+    tree_graph_topology,
+]
+
+
+# ---------------------------------------------------------------------------
+# Layer 2 — Modifier helpers (mutate a graph in-place)
+# ---------------------------------------------------------------------------
+
+def _assign_weights(draw, G, min_weight, max_weight):
+    """Draw a random integer weight for every edge in G."""
+    for u, v in G.edges():
+        w = draw(st.integers(min_value=min_weight, max_value=max_weight))
+        G[u][v]["weight"] = w
+    return G
+
+
+def _assign_uniform_weight(draw, G, min_weight=1, max_weight=50):
+    """Set every edge to the *same* random weight (drawn once)."""
+    w = draw(st.integers(min_value=min_weight, max_value=max_weight))
+    for u, v in G.edges():
+        G[u][v]["weight"] = w
+    return G
+
+
+def _add_self_loops(draw, G, min_weight=1, max_weight=50, max_loops=None):
+    """Add self-loops with positive weights to a random subset of nodes."""
+    nodes = list(G.nodes())
+    if not nodes:
+        return G
+    cap = max_loops if max_loops is not None else len(nodes)
+    count = draw(st.integers(min_value=1, max_value=max(1, cap)))
+    chosen = draw(st.lists(
+        st.sampled_from(nodes), min_size=count, max_size=count, unique=True,
+    ).filter(lambda lst: len(lst) == count))
+    for v in chosen:
+        w = draw(st.integers(min_value=min_weight, max_value=max_weight))
+        G.add_edge(v, v, weight=w)
+    return G
+
+
+def _add_isolated_nodes(draw, G, min_isolates=1, max_isolates=3):
+    """Append isolated nodes (no edges) to the graph."""
+    k = draw(st.integers(min_value=min_isolates, max_value=max_isolates))
+    base = max(G.nodes()) + 1 if G.number_of_nodes() > 0 else 0
+    G.add_nodes_from(range(base, base + k))
+    return G
+
+
+# ---------------------------------------------------------------------------
+# Layer 3 — Composable builder
+# ---------------------------------------------------------------------------
+
+@st.composite
+def graph_builder(draw,
+                  topology=None,
+                  directed=True,
+                  min_nodes=2, max_nodes=12,
+                  min_weight=1, max_weight=50,
+                  uniform_weight=False,
+                  self_loops=False,
+                  isolated_nodes=False):
+    """Composable graph strategy: topology + weights + optional modifiers.
+
+    Parameters
+    ----------
+    topology : callable or None
+        A topology strategy function (e.g. ``random_graph_topology``).
+        ``None`` draws uniformly from ``ALL_TOPOLOGIES``.
+    directed : bool
+        Whether the resulting graph should be directed.
+    min_nodes, max_nodes : int
+        Node count bounds forwarded to the topology strategy.
+    min_weight, max_weight : int
+        Edge weight bounds.
+    uniform_weight : bool
+        If True, all edges get the *same* randomly-drawn weight.
+    self_loops : bool
+        If True, add positive-weight self-loops to a random subset of nodes.
+    isolated_nodes : bool
+        If True, append 1-3 isolated nodes with no edges.
+
+    Returns
+    -------
+    networkx.Graph or networkx.DiGraph
+    """
+    if topology is None:
+        topology = draw(st.sampled_from(ALL_TOPOLOGIES))
+
+    G = draw(topology(min_nodes=min_nodes, max_nodes=max_nodes, directed=directed))
+
+    if uniform_weight:
+        _assign_uniform_weight(draw, G, min_weight, max_weight)
+    else:
+        _assign_weights(draw, G, min_weight, max_weight)
+
+    if self_loops:
+        _add_self_loops(draw, G, min_weight=max(1, min_weight), max_weight=max_weight)
+
+    if isolated_nodes:
+        _add_isolated_nodes(draw, G)
+
+    return G
+
+
+# ---------------------------------------------------------------------------
+# Specialized strategies (bespoke construction that doesn't fit builder)
+# ---------------------------------------------------------------------------
+
+@st.composite
+def dag_with_weights(draw, min_nodes=2, max_nodes=15,
+                     min_weight=-10, max_weight=20):
+    """DAG with arbitrary (including negative) integer weights.
+
+    Because a DAG has no cycles at all, negative edge weights are safe
+    for shortest-path algorithms -- there can never be a negative-weight
+    cycle.  Uses ``dag_topology`` directly rather than ``graph_builder``
+    because the DAG edge-ordering invariant (i < j) must be preserved.
+    """
+    G = draw(dag_topology(min_nodes=min_nodes, max_nodes=max_nodes))
+    return _assign_weights(draw, G, min_weight, max_weight)
+
+
+@st.composite
+def negative_cycle_digraph(draw, min_nodes=3, max_nodes=10):
+    """Directed graph guaranteed to contain at least one negative-weight cycle.
+
+    Construction: build a directed cycle on n nodes, assign weights so
+    that the total cycle weight is negative, then optionally sprinkle
+    extra positive-weight edges.
+    """
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    G = nx.DiGraph()
+    G.add_nodes_from(range(n))
+
+    cycle_weights = []
+    for i in range(n):
+        w = draw(st.integers(min_value=-20, max_value=10))
+        cycle_weights.append(w)
+        G.add_edge(i, (i + 1) % n, weight=w)
+
+    total = sum(cycle_weights)
+    if total >= 0:
+        deficit = total + draw(st.integers(min_value=1, max_value=20))
+        G[0][1]["weight"] -= deficit
+
+    for i in range(n):
+        for j in range(n):
+            if i != j and not G.has_edge(i, j) and draw(st.booleans()):
+                w = draw(st.integers(min_value=1, max_value=20))
+                G.add_edge(i, j, weight=w)
+
+    return G
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEST HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _fw_dist(G):
     """Return dict-of-dict distances from floyd_warshall."""
@@ -74,9 +372,14 @@ def _path_weight(G, path):
 
 
 # ---------------------------------------------------------------------------
-# Test 1 - Zero self-distance
+# Test 1 — Zero self-distance
 # ---------------------------------------------------------------------------
 
+_SELF_LOOP_GRAPH = nx.DiGraph()
+_SELF_LOOP_GRAPH.add_edge(0, 1, weight=3)
+_SELF_LOOP_GRAPH.add_edge(0, 0, weight=7)
+
+@example(G=_SELF_LOOP_GRAPH)
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
 @given(G=graph_builder())
 def test_zero_self_distance(G):
@@ -94,7 +397,8 @@ def test_zero_self_distance(G):
     (Erdos-Renyi, complete, path, cycle, star, tree) with positive integer
     edge weights via ``graph_builder()``.  Positive weights guarantee no
     negative cycles.  Compute all-pairs distances with floyd_warshall and
-    verify every diagonal entry.
+    verify every diagonal entry.  An @example pins a graph with a positive
+    self-loop to ensure this specific edge case is always exercised.
 
     Assumptions / preconditions:
       - All edge weights are positive (>= 1), so no negative cycles exist.
@@ -103,6 +407,8 @@ def test_zero_self_distance(G):
     believes it costs something to stay in place, indicating a fundamental
     error in initialisation or relaxation.
     """
+    event(f"nodes={G.number_of_nodes()}, edges={G.number_of_edges()}")
+
     dist = _fw_dist(G)
     for v in G.nodes():
         assert dist[v][v] == 0, (
@@ -111,7 +417,7 @@ def test_zero_self_distance(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 2 - Triangle inequality
+# Test 2 — Triangle inequality
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -130,7 +436,8 @@ def test_triangle_inequality(G):
     Test strategy: Generate DAGs with arbitrary (including negative) integer
     edge weights.  A DAG cannot contain any cycle, so negative weights are
     safe.  Compute all-pairs distances and check the inequality for every
-    ordered triple of nodes.
+    ordered triple of nodes.  Hypothesis's target() directive guides
+    generation toward denser graphs where violations are more likely.
 
     Assumptions / preconditions:
       - Graph is a DAG, so no negative cycles can exist.
@@ -140,6 +447,8 @@ def test_triangle_inequality(G):
     This implies the algorithm missed a shorter route through v, a critical
     correctness bug.
     """
+    target(float(G.number_of_edges()), label="dag_edge_count")
+
     dist = _fw_dist(G)
     nodes = list(G.nodes())
     for u in nodes:
@@ -157,7 +466,7 @@ def test_triangle_inequality(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 3 - Symmetry on undirected graphs
+# Test 3 — Symmetry on undirected graphs
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -193,7 +502,7 @@ def test_symmetry_undirected(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 4 - Reconstructed path weight equals reported distance
+# Test 4 — Reconstructed path weight equals reported distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -249,7 +558,7 @@ def test_path_weight_equals_distance(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 5 - Subpath optimality
+# Test 5 — Subpath optimality
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -311,7 +620,7 @@ def test_subpath_optimality(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 6 - floyd_warshall dict vs floyd_warshall_predecessor_and_distance
+# Test 6 — floyd_warshall dict vs floyd_warshall_predecessor_and_distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -355,7 +664,7 @@ def test_fw_dict_vs_pred_dist(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 7 - floyd_warshall dict vs floyd_warshall_numpy
+# Test 7 — floyd_warshall dict vs floyd_warshall_numpy
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -397,12 +706,115 @@ def test_fw_dict_vs_numpy(G):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# METAMORPHIC PROPERTIES (Tests 8 - 11)
+# CROSS-ALGORITHM VALIDATION (Tests 8 - 9)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 8 - Weight scaling
+# Test 8 — Floyd-Warshall vs Dijkstra (non-negative weights)
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(G=graph_builder(topology=random_graph_topology))
+def test_fw_vs_dijkstra(G):
+    """
+    Property: For graphs with non-negative edge weights, the all-pairs
+    distances from Floyd-Warshall match the single-source distances from
+    Dijkstra's algorithm for every source node.
+
+    Mathematical basis: Both algorithms solve the same shortest-path
+    problem.  Dijkstra's operates via a priority-queue relaxation that is
+    correct for non-negative weights; Floyd-Warshall uses dynamic
+    programming over intermediate vertices.  For the same input, both must
+    produce identical distance values.
+
+    Test strategy: Generate random directed graphs with positive integer
+    weights (guaranteeing non-negative edges).  For each node as source,
+    run Dijkstra and compare against the corresponding row of the FW
+    distance matrix.  This is a cross-algorithm differential test: it
+    validates FW against a completely independent implementation.
+
+    Assumptions / preconditions:
+      - All edge weights are positive (>= 1).
+      - Both algorithms are applied to the same graph.
+
+    Why failure matters: A disagreement between two independent algorithms
+    that should give the same answer on non-negative-weight graphs would
+    indicate a bug in at least one of them.  Unlike cross-implementation
+    tests (Tests 6-7), this compares fundamentally different algorithmic
+    approaches, catching classes of bugs that internal consistency checks
+    cannot.
+    """
+    event(f"nodes={G.number_of_nodes()}, edges={G.number_of_edges()}")
+    dist_fw = _fw_dist(G)
+
+    for s in G.nodes():
+        dijkstra_dist = dict(nx.single_source_dijkstra_path_length(G, s))
+        for t in G.nodes():
+            d_fw = dist_fw[s][t]
+            d_dj = dijkstra_dist.get(t, INF)
+            if math.isinf(d_fw) and math.isinf(d_dj):
+                continue
+            assert abs(d_fw - d_dj) < 1e-9, (
+                f"FW vs Dijkstra mismatch: fw[{s}][{t}]={d_fw}, "
+                f"dijkstra={d_dj}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — Floyd-Warshall vs Bellman-Ford (negative weights, no neg cycles)
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(G=dag_with_weights())
+def test_fw_vs_bellman_ford(G):
+    """
+    Property: For graphs without negative cycles, the all-pairs distances
+    from Floyd-Warshall match the single-source distances from Bellman-Ford
+    for every source node.
+
+    Mathematical basis: Bellman-Ford uses iterative edge relaxation and is
+    correct for graphs with negative edges but no negative cycles.
+    Floyd-Warshall uses a different algorithmic paradigm (dynamic
+    programming over intermediate vertices).  On valid inputs (no negative
+    cycles), both must agree.  DAGs guarantee no cycles of any kind.
+
+    Test strategy: Generate DAGs with mixed-sign edge weights.  For each
+    source node, run Bellman-Ford and compare against the FW distance row.
+    This validates FW's handling of negative edge weights against an
+    independent algorithm that also supports them.
+
+    Assumptions / preconditions:
+      - Graph is a DAG (no cycles, hence no negative cycles).
+      - Bellman-Ford is guaranteed to terminate correctly on this input.
+
+    Why failure matters: A disagreement on negative-weight graphs (where
+    Dijkstra cannot be used) would reveal a bug in FW's relaxation when
+    negative edges are present -- a scenario that cross-implementation
+    checks alone cannot validate.
+    """
+    dist_fw = _fw_dist(G)
+
+    for s in G.nodes():
+        bf_dist = dict(nx.single_source_bellman_ford_path_length(G, s))
+        for t in G.nodes():
+            d_fw = dist_fw[s][t]
+            d_bf = bf_dist.get(t, INF)
+            if math.isinf(d_fw) and math.isinf(d_bf):
+                continue
+            assert abs(d_fw - d_bf) < 1e-9, (
+                f"FW vs Bellman-Ford mismatch: fw[{s}][{t}]={d_fw}, "
+                f"bellman_ford={d_bf}"
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# METAMORPHIC PROPERTIES (Tests 10 - 14)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ---------------------------------------------------------------------------
+# Test 10 — Weight scaling
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
@@ -457,7 +869,7 @@ def test_weight_scaling(G, k):
 
 
 # ---------------------------------------------------------------------------
-# Test 9 - Adding a non-negative edge can only decrease distances
+# Test 11 — Adding a non-negative edge can only decrease distances
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
@@ -465,8 +877,9 @@ def test_weight_scaling(G, k):
     G=graph_builder(
         topology=random_graph_topology, min_nodes=3, max_nodes=10, min_weight=0),
     w=st.integers(min_value=0, max_value=50),
+    data=st.data(),
 )
-def test_edge_addition_monotonicity(G, w):
+def test_edge_addition_monotonicity(G, w, data):
     """
     Property: Adding a single edge with non-negative weight to a graph can
     only decrease (or maintain) pairwise shortest-path distances.
@@ -479,7 +892,8 @@ def test_edge_addition_monotonicity(G, w):
 
     Test strategy: Compute distances on the original graph, add a random
     non-negative-weight edge between two nodes that are not already
-    connected, recompute, and verify every distance is <= the original.
+    connected (selected via Hypothesis data.draw for proper shrinking),
+    recompute, and verify every distance is <= the original.
 
     Assumptions / preconditions:
       - All existing weights are non-negative.
@@ -496,7 +910,7 @@ def test_edge_addition_monotonicity(G, w):
 
     dist_before = _fw_dist(G)
 
-    a, b = non_edges[0]
+    a, b = data.draw(st.sampled_from(non_edges), label="new_edge")
     G2 = G.copy()
     G2.add_edge(a, b, weight=w)
     dist_after = _fw_dist(G2)
@@ -510,12 +924,15 @@ def test_edge_addition_monotonicity(G, w):
 
 
 # ---------------------------------------------------------------------------
-# Test 10 - Subgraph distances are a lower bound
+# Test 12 — Subgraph distances are a lower bound
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
-@given(G=graph_builder(topology=random_graph_topology, min_nodes=4, max_nodes=10))
-def test_subgraph_distance_lower_bound(G):
+@given(
+    G=graph_builder(topology=random_graph_topology, min_nodes=4, max_nodes=10),
+    data=st.data(),
+)
+def test_subgraph_distance_lower_bound(G, data):
     """
     Property: For a subgraph H of G (same nodes, subset of edges),
     dist_G(u,v) <= dist_H(u,v) for all u, v.
@@ -526,8 +943,9 @@ def test_subgraph_distance_lower_bound(G):
     monotonicity to arbitrary edge subsets.
 
     Test strategy: Generate a directed graph G with positive weights.
-    Construct a subgraph H by keeping each edge independently with
-    probability 0.5.  Compute distances on both and verify the inequality.
+    Construct a subgraph H by keeping each edge independently with a
+    Hypothesis-drawn boolean (enabling proper shrinking of failing
+    examples).  Compute distances on both and verify the inequality.
 
     Assumptions / preconditions:
       - Positive weights ensure no negative cycles in either G or H.
@@ -538,9 +956,14 @@ def test_subgraph_distance_lower_bound(G):
     """
     assume(G.number_of_edges() >= 2)
 
-    rng = random.Random(42)
+    edges = list(G.edges())
+    keep_flags = data.draw(
+        st.lists(st.booleans(), min_size=len(edges), max_size=len(edges)),
+        label="keep_flags",
+    )
+
     H = G.copy()
-    edges_to_remove = [e for e in H.edges() if rng.random() < 0.5]
+    edges_to_remove = [e for e, keep in zip(edges, keep_flags) if not keep]
     H.remove_edges_from(edges_to_remove)
 
     assume(H.number_of_edges() > 0)
@@ -558,7 +981,7 @@ def test_subgraph_distance_lower_bound(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 11 - Reversing edges transposes the distance matrix
+# Test 13 — Reversing edges transposes the distance matrix
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -601,13 +1024,107 @@ def test_graph_reversal_transposes_distances(G):
             )
 
 
+# ---------------------------------------------------------------------------
+# Test 14 — Adding an isolated node does not change existing distances
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(G=graph_builder(topology=random_graph_topology))
+def test_node_addition_invariance(G):
+    """
+    Property: Adding an isolated node (no incident edges) to the graph
+    does not change the pairwise distances between any existing nodes.
+
+    Mathematical basis: An isolated node u has no incident edges, so no
+    path between existing nodes can pass through u.  The set of candidate
+    paths for any existing pair (s, t) is unchanged, so the shortest-path
+    distances must remain identical.
+
+    Test strategy: Compute FW distances on the original graph, add a new
+    isolated node with a label not already in the graph, recompute, and
+    verify that every distance between original nodes is preserved.  Also
+    verify that distances involving the new node are 0 (self) or inf (all
+    others).
+
+    Assumptions / preconditions:
+      - The new node has no edges.
+
+    Why failure matters: Changed distances after adding an isolated node
+    would indicate the algorithm's relaxation loop is sensitive to the
+    mere presence of vertices in the node set, even when they contribute
+    no paths -- a structural bug in how the DP table is initialised or
+    iterated.
+    """
+    dist_before = _fw_dist(G)
+    original_nodes = list(G.nodes())
+
+    new_node = max(G.nodes()) + 1 if G.number_of_nodes() > 0 else 0
+    G2 = G.copy()
+    G2.add_node(new_node)
+    dist_after = _fw_dist(G2)
+
+    for u in original_nodes:
+        for v in original_nodes:
+            d_before = dist_before[u][v]
+            d_after = dist_after[u][v]
+            if math.isinf(d_before) and math.isinf(d_after):
+                continue
+            assert abs(d_before - d_after) < 1e-9, (
+                f"Distance changed after adding isolated node: "
+                f"dist[{u}][{v}] was {d_before}, now {d_after}"
+            )
+
+    assert dist_after[new_node][new_node] == 0
+    for v in original_nodes:
+        assert dist_after[new_node][v] == INF, (
+            f"dist(new_node, {v}) = {dist_after[new_node][v]}, expected inf"
+        )
+        assert dist_after[v][new_node] == INF, (
+            f"dist({v}, new_node) = {dist_after[v][new_node]}, expected inf"
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# BOUNDARY / EDGE-CASE PROPERTIES (Tests 12 - 14)
+# BOUNDARY / EDGE-CASE PROPERTIES (Tests 15 - 18)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 12 - Empty graph: all off-diagonal distances are infinite
+# Test 15 — Single-node graph
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(node_id=st.integers(min_value=0, max_value=100))
+def test_single_node_self_distance(node_id):
+    """
+    Property: A graph with a single node v has dist(v, v) = 0, and the
+    distance dictionary contains exactly one entry.
+
+    Mathematical basis: The trivial path of length zero from a node to
+    itself has cost 0.  With only one node and no edges, there are no
+    other pairs to consider.  This is the most degenerate input possible.
+
+    Test strategy: Create a directed graph with a single node (varying the
+    node label via Hypothesis) and verify the distance matrix is the 1x1
+    zero matrix.
+
+    Assumptions / preconditions:
+      - The graph has exactly one node and zero edges.
+
+    Why failure matters: Incorrect output on a single-node graph would
+    indicate a severe initialisation or indexing bug in the algorithm's
+    handling of degenerate inputs.
+    """
+    G = nx.DiGraph()
+    G.add_node(node_id)
+    dist = _fw_dist(G)
+    assert dist[node_id][node_id] == 0, (
+        f"dist({node_id}, {node_id}) = {dist[node_id][node_id]}, expected 0"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 16 — Empty graph: all off-diagonal distances are infinite
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -647,7 +1164,7 @@ def test_empty_graph_distances(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 13 - Disconnected components produce infinite cross-distances
+# Test 17 — Disconnected components produce infinite cross-distances
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -692,7 +1209,7 @@ def test_disconnected_components(G):
 
 
 # ---------------------------------------------------------------------------
-# Test 14 - Negative cycle produces negative self-distance
+# Test 18 — Negative cycle produces negative self-distance
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=SLOW_OK)
@@ -734,12 +1251,68 @@ def test_negative_cycle_detection(G):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# IDEMPOTENCE / DETERMINISM (Test 15)
+# POSTCONDITION PROPERTIES (Test 19)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 # ---------------------------------------------------------------------------
-# Test 15 - Idempotence: running twice yields identical results
+# Test 19 — Complete graph with uniform positive weight has known distances
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(
+    n=st.integers(min_value=2, max_value=8),
+    w=st.integers(min_value=1, max_value=50),
+)
+def test_complete_graph_uniform_weight(n, w):
+    """
+    Property: In a complete directed graph where every edge has the same
+    positive weight w, dist(u, v) = w for all u != v and dist(u, u) = 0.
+
+    Mathematical basis: In K_n with uniform weight w > 0, the direct edge
+    u -> v (which exists for every pair) has weight w.  Any longer path
+    u -> x1 -> ... -> v has weight >= 2w > w.  Therefore the shortest
+    path is always the single direct edge, giving dist(u, v) = w.  This
+    is a closed-form postcondition: we know the exact answer without
+    running the algorithm.
+
+    Test strategy: Construct complete digraphs of varying sizes with
+    uniform positive weights drawn by Hypothesis.  Verify every entry of
+    the FW distance matrix matches the known closed-form solution.
+
+    Assumptions / preconditions:
+      - w > 0 (positive uniform weight).
+      - Complete directed graph (edge for every ordered pair).
+
+    Why failure matters: Getting the wrong answer on an input where the
+    correct distances have a trivial closed form would indicate a
+    fundamental arithmetic or structural bug in the algorithm.
+    """
+    G = nx.complete_graph(n, create_using=nx.DiGraph)
+    for u, v in G.edges():
+        G[u][v]["weight"] = w
+
+    dist = _fw_dist(G)
+    for u in G.nodes():
+        for v in G.nodes():
+            if u == v:
+                assert dist[u][v] == 0, (
+                    f"dist({u},{u}) = {dist[u][v]}, expected 0"
+                )
+            else:
+                assert dist[u][v] == w, (
+                    f"dist({u},{v}) = {dist[u][v]}, expected {w} "
+                    f"(uniform weight on complete graph)"
+                )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# IDEMPOTENCE / DETERMINISM (Test 20)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ---------------------------------------------------------------------------
+# Test 20 — Idempotence: running twice yields identical results
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
@@ -777,3 +1350,102 @@ def test_idempotence(G):
     nodelist, A1 = _fw_numpy(G)
     _, A2 = _fw_numpy(G)
     assert np.array_equal(A1, A2), "floyd_warshall_numpy returned different arrays"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BUG DISCOVERY
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Finding: floyd_warshall silently returns invalid results on graphs with
+# negative-weight cycles, instead of raising an exception.
+#
+# NetworkX's other shortest-path algorithms handle negative cycles
+# consistently:
+#   - nx.single_source_bellman_ford  →  raises NetworkXUnbounded
+#   - nx.johnson                     →  raises NetworkXUnbounded
+#   - nx.negative_edge_cycle         →  correctly detects and returns True
+#
+# However, all three Floyd-Warshall variants silently return distance
+# dictionaries/matrices with meaningless values (e.g. negative self-
+# distances).  The documentation states "This algorithm can still fail if
+# there are negative cycles" but does not specify HOW it fails or how
+# users should detect the failure.
+#
+# Impact: Users switching from Bellman-Ford to Floyd-Warshall lose their
+# negative-cycle protection without any warning.  There is no exception,
+# no warning, and no documented detection mechanism.
+#
+# Verified on: NetworkX 3.6.1, Python 3.12
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_negative_cycle_silent_failure():
+    """
+    BUG DISCOVERY: Floyd-Warshall silently returns invalid results on
+    negative-weight cycles, unlike other NetworkX shortest-path algorithms
+    which raise NetworkXUnbounded.
+
+    Evidence
+    --------
+    Minimal reproducer on a 3-node negative cycle (0→1→2→0, total weight
+    = 1 + 1 + (-5) = -3):
+
+        G = nx.DiGraph()
+        G.add_weighted_edges_from([(0, 1, 1), (1, 2, 1), (2, 0, -5)])
+
+    Comparative behavior:
+        nx.single_source_bellman_ford_path_length(G, 0)
+            → raises NetworkXUnbounded("Negative cycle detected.")
+        nx.johnson(G)
+            → raises NetworkXUnbounded("Negative cycle detected.")
+        nx.floyd_warshall(G)
+            → silently returns {0: {0: -3, 1: -2, 2: -1}, ...}
+
+    The floyd_warshall docstring says "This algorithm can still fail if
+    there are negative cycles" but does not define what "fail" means, does
+    not raise an exception, and does not emit a warning.  This creates an
+    API inconsistency: users who rely on exceptions for negative-cycle
+    detection (as Bellman-Ford and Johnson provide) will get silent
+    corruption from Floyd-Warshall.
+
+    Tested on: NetworkX 3.6.1, Python 3.12.10
+
+    Why this matters: A user who migrates from Bellman-Ford (which raises
+    on negative cycles) to Floyd-Warshall (which doesn't) silently loses
+    negative-cycle detection.  The returned distances look structurally
+    valid (same dict-of-dict format) but contain meaningless values,
+    risking silent data corruption in downstream analysis.
+    """
+    G = nx.DiGraph()
+    G.add_weighted_edges_from([(0, 1, 1), (1, 2, 1), (2, 0, -5)])
+
+    bellman_ford_raised = False
+    try:
+        dict(nx.single_source_bellman_ford_path_length(G, 0))
+    except nx.NetworkXUnbounded:
+        bellman_ford_raised = True
+
+    assert bellman_ford_raised, (
+        "Expected Bellman-Ford to raise NetworkXUnbounded on negative cycle"
+    )
+
+    floyd_warshall_raised = False
+    try:
+        dist = nx.floyd_warshall(G)
+    except (nx.NetworkXUnbounded, nx.NetworkXError):
+        floyd_warshall_raised = True
+
+    assert not floyd_warshall_raised, (
+        "Floyd-Warshall now raises on negative cycles -- the bug may be "
+        "fixed!  Update this test to expect the exception."
+    )
+
+    assert dist[0][0] < 0, (
+        "Negative cycle should produce negative self-distance"
+    )
+    assert dist[1][1] < 0, (
+        "All nodes on the cycle should have negative self-distance"
+    )
+    assert dist[2][2] < 0, (
+        "All nodes on the cycle should have negative self-distance"
+    )
