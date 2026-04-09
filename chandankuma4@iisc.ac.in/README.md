@@ -1,5 +1,8 @@
 # Property-Based Testing: Max-Flow / Min-Cut Algorithms
 
+**Course:** E0 251o Data Structures & Graph Analytics (2026)
+**Team member:** M Chandan Kumar Rao (`chandankuma4@iisc.ac.in`)
+
 ## Table of Contents
 
 - [Project Overview](#project-overview)

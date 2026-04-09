@@ -2,6 +2,9 @@
 Property-Based Tests for NetworkX Max-Flow / Min-Cut Algorithms
 ================================================================
 
+Team member : M Chandan Kumar Rao (chandankuma4@iisc.ac.in)
+Algorithm   : Max-Flow / Min-Cut Algorithms
+
 Tests the following NetworkX functions:
   - networkx.algorithms.flow.maximum_flow
   - networkx.algorithms.flow.maximum_flow_value
