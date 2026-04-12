@@ -1,7 +1,7 @@
 # Property-Based Testing: Max-Flow / Min-Cut Algorithms
 
 **Course:** E0 251o Data Structures & Graph Analytics (2026)
-**Team member:** M Chandan Kumar Rao (`chandankuma4@iisc.ac.in`)
+**Team member:** M Chandan Kumar Rao (`chandankuma4@iisc.ac.in`, SR No. 24650)
 
 ## Table of Contents
 
@@ -13,13 +13,14 @@
 - [Test Descriptions](#test-descriptions)
 - [Graph Generation Strategies](#graph-generation-strategies)
 - [How to Run](#how-to-run)
+- [Bug Discovery](#bug-discovery)
 - [References](#references)
 
 ---
 
 ## Project Overview
 
-This project implements **15 property-based tests** using the [Hypothesis](https://hypothesis.readthedocs.io/) library to verify the correctness of **NetworkX's max-flow and min-cut** algorithms. Rather than checking specific input/output pairs, property-based testing asserts *universal invariants* that must hold for **all** valid inputs — catching edge cases that hand-written examples miss.
+This project implements **20 property-based tests** (Tests 1–20) plus **1 bug-discovery test** using the [Hypothesis](https://hypothesis.readthedocs.io/) library to verify the correctness of **NetworkX's max-flow and min-cut** algorithms. Rather than checking specific input/output pairs, property-based testing asserts *universal invariants* that must hold for **all** valid inputs — catching edge cases that hand-written examples miss.
 
 ### Algorithms Tested
 
@@ -167,6 +168,36 @@ All four possible s-t cuts are shown. In each sub-plot, green nodes belong to se
 
 **Test 15 (test_weak_duality)** checks that max flow ≤ every random cut.
 
+### Example 9: Cross-Algorithm Consensus
+
+![Example 9: Algorithm Consensus](images/ex9_algorithm_consensus.png)
+
+All five NetworkX max-flow algorithms (Edmonds-Karp, Shortest Augmenting Path, Preflow-Push, Dinitz, Boykov-Kolmogorov) must return the same value on any input. This is **Test 16 (test_all_algorithms_agree)**.
+
+### Example 10: No Augmenting Path in Residual Graph
+
+![Example 10: Residual Graph](images/ex10_residual.png)
+
+After computing max flow, the residual graph has no s→t path — this is the Ford-Fulkerson optimality certificate. The left panel shows the original graph with flow assignments; the right panel shows the residual graph with no path from source to sink. This is **Test 17 (test_no_augmenting_path_in_residual)**.
+
+### Example 11: Complementary Slackness
+
+![Example 11: Complementary Slackness](images/ex11_slackness.png)
+
+In an optimal flow/cut pair, forward cut edges (S→T) are fully saturated and backward cut edges (T→S) carry zero flow. This is the LP duality condition verified by **Test 18 (test_mincut_complementary_slackness)**.
+
+### Example 12: Edge-Reversal Symmetry
+
+![Example 12: Edge Reversal](images/ex12_reversal.png)
+
+Reversing all edges and swapping source/sink preserves the max-flow value. The left panel shows the original graph (max flow = 12), the right panel shows the reversed graph Gᴿ with swapped source/sink (max flow = 12). This is **Test 19 (test_edge_reversal_symmetry)**.
+
+### Example 13: Gomory-Hu Tree
+
+![Example 13: Gomory-Hu Tree](images/ex13_gomory_hu.png)
+
+The Gomory-Hu tree (right) encodes all O(n²) pairwise max-flow values of the original undirected graph (left) in just n-1 edges. The minimum edge weight on any tree path equals the max-flow between those endpoints. This is **Test 20 (test_gomory_hu_tree)**.
+
 ---
 
 ## Test Suite Overview
@@ -188,6 +219,11 @@ All four possible s-t cuts are shown. In each sub-plot, green nodes belong to se
 | 13 | `test_removing_edge_cannot_increase_flow` | **Metamorphic** | Removing edge cannot increase flow |
 | 14 | `test_complete_graph_lower_bound` | **Postcondition** | Flow ≥ direct s→t edge capacity |
 | 15 | `test_weak_duality` | **Invariant** | Flow ≤ every possible cut capacity |
+| 16 | `test_all_algorithms_agree` | **Differential** | All 5 flow algorithms (Edmonds-Karp, Shortest Augmenting Path, Preflow-Push, Dinitz, Boykov-Kolmogorov) return the same value |
+| 17 | `test_no_augmenting_path_in_residual` | **Optimality Certificate** | No s-t path exists in the residual graph after max flow |
+| 18 | `test_mincut_complementary_slackness` | **LP Duality** | Forward cut edges are saturated; backward cut edges carry zero flow |
+| 19 | `test_edge_reversal_symmetry` | **Symmetry** | max-flow(G, s→t) = max-flow(Gᴿ, t→s) under edge reversal |
+| 20 | `test_gomory_hu_tree` | **Structural** | Min edge on Gomory-Hu tree path = pairwise max-flow (undirected) |
 
 ---
 
@@ -373,9 +409,69 @@ All four possible s-t cuts are shown. In each sub-plot, green nodes belong to se
 
 ---
 
+### Test 16 — Cross-Algorithm Consensus (`test_all_algorithms_agree`)
+
+**Property type:** Differential / N-Version Testing
+
+**What it tests:** All five max-flow implementations in NetworkX (Edmonds-Karp, Shortest Augmenting Path, Preflow-Push, Dinitz, Boykov-Kolmogorov) return the same max-flow value on any input.
+
+**Mathematical basis:** The max-flow value is unique (it is the optimum of a linear programme). Different algorithms may find different flow decompositions, but the objective value must be identical. This is *differential testing* -- instead of checking against a known oracle, we check that independent implementations agree. A bug would have to be identical across all five fundamentally different codepaths to escape detection.
+
+**Failure means:** At least one of the five algorithm implementations has a correctness bug.
+
+---
+
+### Test 17 — No Augmenting Path in Residual (`test_no_augmenting_path_in_residual`)
+
+**Property type:** Optimality Certificate
+
+**What it tests:** After computing max flow, the residual graph contains no directed path from source to sink.
+
+**Mathematical basis:** The Augmenting Path Theorem (corollary of Max-Flow Min-Cut) states that a flow is maximum iff no augmenting path exists in the residual graph. This is the termination condition of Ford-Fulkerson and serves as an independently verifiable optimality certificate. Rather than just checking the flow value, this reconstructs the residual graph from the flow decomposition and verifies the theoretical optimality condition directly.
+
+**Failure means:** The flow is not maximum — additional flow could be pushed.
+
+---
+
+### Test 18 — Complementary Slackness (`test_mincut_complementary_slackness`)
+
+**Property type:** LP Duality (Complementary Slackness)
+
+**What it tests:** In an optimal max-flow/min-cut pair: (1) every forward edge crossing the cut (S→T) is fully saturated, and (2) every backward edge (T→S) carries zero flow.
+
+**Mathematical basis:** This is the complementary slackness condition from LP duality. Strong duality (max flow = min cut) holds, and complementary slackness gives the precise primal-dual relationship: `f(u,v) = c(u,v)` for S→T edges, `f(u,v) = 0` for T→S edges. This verifies the structural relationship between the flow and cut solutions, not just their values -- a much stronger check than value equality alone.
+
+**Failure means:** The flow and cut are not a valid primal-dual optimal pair.
+
+---
+
+### Test 19 — Edge-Reversal Symmetry (`test_edge_reversal_symmetry`)
+
+**Property type:** Symmetry / Metamorphic
+
+**What it tests:** Reversing every edge and swapping source/sink preserves the max-flow value: `max-flow(G, s→t) = max-flow(Gᴿ, t→s)`.
+
+**Mathematical basis:** Any feasible flow f in G can be mirrored to a feasible flow fᴿ in Gᴿ with the same value by setting fᴿ(v,u) = f(u,v). This bijection preserves feasibility and value, so the optima coincide. This is a non-obvious symmetry that most textbooks don't emphasise, and it catches asymmetric bugs that only manifest in certain edge orientations.
+
+**Failure means:** The algorithm has an orientation-dependent bug.
+
+---
+
+### Test 20 — Gomory-Hu Tree (`test_gomory_hu_tree`)
+
+**Property type:** Structural / Cross-Validation
+
+**What it tests:** In the Gomory-Hu tree of an undirected graph, the minimum-weight edge on the u-v tree path equals the max-flow between u and v in the original graph, for *every* pair (u, v).
+
+**Mathematical basis:** The Gomory-Hu theorem (1961) states that for any undirected graph with n nodes, there exists a weighted tree encoding all O(n²) pairwise max-flow values in just n-1 edges. This cross-validates two completely independent algorithms (Gomory-Hu tree construction and pairwise max-flow), and also introduces a new graph generation strategy (`undirected_flow_network`) for connected undirected graphs.
+
+**Failure means:** Either the Gomory-Hu tree construction or the max-flow algorithm (or both) has a bug.
+
+---
+
 ## Graph Generation Strategies
 
-The test suite uses two custom Hypothesis strategies:
+The test suite uses three custom Hypothesis strategies:
 
 ### `flow_network` (primary strategy)
 
@@ -400,6 +496,18 @@ def single_path_network(draw, min_len=2, max_len=10, min_cap=1, max_cap=100):
 1. Draws path length `n ∈ [2, 10]`
 2. Creates a simple chain `0 → 1 → … → n-1`
 3. Each edge gets a random capacity
+
+### `undirected_flow_network` (for Gomory-Hu tree tests)
+
+```python
+@st.composite
+def undirected_flow_network(draw, min_nodes=3, max_nodes=10, min_cap=1, max_cap=50):
+```
+
+1. Draws a random node count `n ∈ [3, 10]`
+2. Builds a spanning path `0 — 1 — … — n-1` to guarantee connectivity
+3. Adds random extra undirected edges with random capacities
+4. Result: a connected undirected graph suitable for Gomory-Hu tree construction
 
 ---
 
@@ -447,8 +555,75 @@ test_maxflow_mincut.py::test_adding_parallel_path_increases_flow PASSED
 test_maxflow_mincut.py::test_removing_edge_cannot_increase_flow PASSED
 test_maxflow_mincut.py::test_complete_graph_lower_bound      PASSED
 test_maxflow_mincut.py::test_weak_duality                    PASSED
+test_maxflow_mincut.py::test_all_algorithms_agree             PASSED
+test_maxflow_mincut.py::test_no_augmenting_path_in_residual   PASSED
+test_maxflow_mincut.py::test_mincut_complementary_slackness   PASSED
+test_maxflow_mincut.py::test_edge_reversal_symmetry           PASSED
+test_maxflow_mincut.py::test_gomory_hu_tree                   PASSED
+test_maxflow_mincut.py::test_bug_negative_capacity_silent_inconsistency FAILED
 
-============================== 15 passed ==============================
+=================== 1 failed, 20 passed ===================
+
+# NOTE: The 1 failure is EXPECTED — it demonstrates a genuine bug in
+# NetworkX (see Bug Discovery section below). All 20 correctness tests pass.
+```
+
+---
+
+## Bug Discovery
+
+### NetworkX Bug: Silent Inconsistency with Negative-Capacity Edges
+
+**Test:** `test_bug_negative_capacity_silent_inconsistency` (EXPECTED TO FAIL)
+
+**Severity:** Medium — affects all 5 flow algorithms in NetworkX 3.2.1
+
+**Summary:** When any edge has a negative capacity, `nx.minimum_cut()` silently returns an internally inconsistent result: the reported cut value does not match the actual capacity of the returned partition.
+
+**Minimal Reproducer:**
+
+```python
+import networkx as nx
+
+G = nx.DiGraph()
+G.add_edge(0, 1, capacity=1)
+G.add_edge(0, 2, capacity=-1)
+G.add_edge(1, 2, capacity=1)
+
+cut_val, (S, T) = nx.minimum_cut(G, 0, 2)
+# Returns: cut_val=1, S={0,1}, T={2}
+
+# But the actual partition capacity is:
+#   edge (0,2): capacity = -1
+#   edge (1,2): capacity =  1
+#   total = 0  ≠  1  ← INCONSISTENT
+```
+
+**Root Cause:** In `networkx/algorithms/flow/utils.py`, the function `build_residual_network()` filters edges with:
+
+```python
+edge_list = [
+    (u, v, attr)
+    for u, v, attr in G.edges(data=True)
+    if u != v and attr.get(capacity, inf) > 0   # ← silently drops negative caps
+]
+```
+
+This silently removes any edge with capacity ≤ 0 from the residual network. The flow algorithms then operate on a **modified graph** that excludes the negative-capacity edge. However, the partition `(S, T)` is returned to the user as if it applies to the **original graph**. When the user recomputes the cut capacity using the original graph's capacities, the result does not match the reported value.
+
+**Evidence this is not a test error:**
+1. The graph is a valid `nx.DiGraph` — NetworkX accepts it without error
+2. The returned partition is structurally valid (`S ∪ T = V`, `S ∩ T = ∅`, `s ∈ S`, `t ∈ T`)
+3. The bug reproduces across **all 5 flow algorithms** (Edmonds-Karp, Shortest Augmenting Path, Preflow-Push, Dinitz, Boykov-Kolmogorov)
+4. Hypothesis automatically shrinks to the minimal failing example
+
+**Suggested Fix:** NetworkX should raise a `ValueError` when any edge has a negative capacity, since flow networks require non-negative capacities by definition (`c(u,v) ≥ 0`). The current silent behavior violates the principle of least surprise.
+
+**How to run the bug test:**
+
+```bash
+pytest test_maxflow_mincut.py::test_bug_negative_capacity_silent_inconsistency -v
+# Expected: FAILED (demonstrates the bug)
 ```
 
 ---
@@ -459,3 +634,4 @@ test_maxflow_mincut.py::test_weak_duality                    PASSED
 2. [NetworkX Flow Documentation](https://networkx.org/documentation/stable/reference/algorithms/flow.html)
 3. [Hypothesis Documentation](https://hypothesis.readthedocs.io/en/latest/)
 4. Cormen, T.H., Leiserson, C.E., Rivest, R.L., & Stein, C. (2009). *Introduction to Algorithms* (3rd ed.), Chapter 26: Maximum Flow.
+5. Gomory, R.E. & Hu, T.C. (1961). *Multi-terminal network flows.* Journal of the Society for Industrial and Applied Mathematics, 9(4), 551–570.

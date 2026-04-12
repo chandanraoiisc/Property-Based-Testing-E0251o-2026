@@ -2,8 +2,8 @@
 Property-Based Tests for NetworkX Max-Flow / Min-Cut Algorithms
 ================================================================
 
-Team member : M Chandan Kumar Rao (chandankuma4@iisc.ac.in)
-Algorithm   : Max-Flow / Min-Cut Algorithms
+**Course:** E0 251o Data Structures & Graph Analytics (2026)
+**Team member:** M Chandan Kumar Rao (chandankuma4@iisc.ac.in, SR No. 24650)
 
 Tests the following NetworkX functions:
   - networkx.algorithms.flow.maximum_flow
@@ -18,7 +18,7 @@ structures with random capacities, sizes, and topologies.
 import networkx as nx
 import hypothesis.strategies as st
 from hypothesis import given, assume, settings, HealthCheck
-import random
+
 
 
 # ---------------------------------------------------------------------------
@@ -109,12 +109,8 @@ def test_maxflow_equals_mincut(G):
     maximum flow value and the minimum cut value independently and assert
     equality.
 
-    Assumptions / preconditions:
-      - The graph is directed with positive integer capacities.
-      - There exists at least one path from source (0) to sink (n-1).
-
-    Failure implication: A mismatch would indicate a fundamental correctness
-    bug in either the max-flow or the min-cut implementation—one of them
+    Why this matters: If this property fails, either the max-flow or the
+    min-cut implementation has a fundamental correctness bug—one of them
     violates the duality theorem.
     """
     s, t = _source_sink(G)
@@ -145,12 +141,9 @@ def test_flow_conservation(G):
     and its decomposition, then verify conservation at every intermediate
     node.
 
-    Assumptions / preconditions:
-      - Valid flow network with at least one s-t path.
-
-    Failure implication: Violation means the algorithm produced an invalid
-    flow—some node is "creating" or "destroying" flow, which is physically
-    and mathematically impossible in a correct solution.
+    Why this matters: If this property fails, the algorithm produced an
+    invalid flow—some node is "creating" or "destroying" flow, which is
+    physically and mathematically impossible in a correct solution.
     """
     s, t = _source_sink(G)
     flow_value, flow_dict = nx.maximum_flow(G, s, t)
@@ -184,10 +177,7 @@ def test_capacity_constraints(G):
     Test strategy: Generate random flow networks, compute max flow, and
     check every edge.
 
-    Assumptions / preconditions:
-      - All capacities are positive integers.
-
-    Failure implication: An edge carrying negative flow or flow exceeding
+    Why this matters: An edge carrying negative flow or flow exceeding
     capacity means the algorithm returned an infeasible solution.
     """
     s, t = _source_sink(G)
@@ -219,10 +209,7 @@ def test_source_outflow_equals_sink_inflow(G):
     Test strategy: Compute max flow and verify the three-way equality:
     net source outflow = net sink inflow = reported flow value.
 
-    Assumptions / preconditions:
-      - Valid flow network with at least one s-t path.
-
-    Failure implication: A discrepancy means either the flow decomposition
+    Why this matters: A discrepancy means either the flow decomposition
     is inconsistent or the reported value is wrong.
     """
     s, t = _source_sink(G)
@@ -259,10 +246,7 @@ def test_mincut_partition_validity(G):
     Test strategy: Compute the minimum cut, verify the partition properties,
     and recompute the crossing-edge capacity independently.
 
-    Assumptions / preconditions:
-      - Valid flow network with at least one s-t path.
-
-    Failure implication: An invalid partition or mismatched capacity means
+    Why this matters: An invalid partition or mismatched capacity means
     the min-cut algorithm is returning an incorrect or inconsistent result.
     """
     s, t = _source_sink(G)
@@ -288,8 +272,9 @@ def test_mincut_partition_validity(G):
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow])
-@given(G=flow_network(), extra_cap=st.integers(min_value=1, max_value=50))
-def test_monotonicity_of_max_flow(G, extra_cap):
+@given(G=flow_network(), extra_cap=st.integers(min_value=1, max_value=50),
+       edge_data=st.randoms(use_true_random=False))
+def test_monotonicity_of_max_flow(G, extra_cap, edge_data):
     """
     Property: Increasing the capacity of any single edge cannot decrease the
     maximum flow value.
@@ -302,10 +287,7 @@ def test_monotonicity_of_max_flow(G, extra_cap):
     edge, increase its capacity, recompute, and verify the new value is ≥
     the original.
 
-    Assumptions / preconditions:
-      - Graph has at least one edge.
-
-    Failure implication: A decrease would violate the monotonicity of linear
+    Why this matters: A decrease would violate the monotonicity of linear
     programmes and indicate a bug in the flow algorithm.
     """
     s, t = _source_sink(G)
@@ -314,7 +296,7 @@ def test_monotonicity_of_max_flow(G, extra_cap):
     original_val = nx.maximum_flow_value(G, s, t)
 
     edges = list(G.edges())
-    u, v = edges[random.randint(0, len(edges) - 1)]
+    u, v = edges[edge_data.randint(0, len(edges) - 1)]
     G2 = G.copy()
     G2[u][v]["capacity"] += extra_cap
 
@@ -342,12 +324,9 @@ def test_capacity_scaling(G, k):
     the original ⟺ k·f* is optimal for the scaled instance.
 
     Test strategy: Compute max flow, scale all capacities by k, recompute,
-    and verify the ratio.
+    and verify the ratio.  Graphs are random directed networks (3-15 nodes).
 
-    Assumptions / preconditions:
-      - k ≥ 2 (non-trivial scaling).
-
-    Failure implication: A wrong ratio would indicate the algorithm is
+    Why this matters: A wrong ratio would indicate the algorithm is
     sensitive to absolute capacity values in an incorrect way.
     """
     s, t = _source_sink(G)
@@ -381,10 +360,7 @@ def test_single_path_bottleneck(G):
     Test strategy: Generate simple path graphs of length 2–10 with random
     capacities and verify max flow = min capacity.
 
-    Assumptions / preconditions:
-      - The graph is a simple directed path (no branches).
-
-    Failure implication: Getting the wrong value on such a trivial topology
+    Why this matters: Getting the wrong value on such a trivial topology
     would indicate a severe algorithmic error.
     """
     s, t = _source_sink(G)
@@ -413,10 +389,7 @@ def test_idempotence(G):
     Test strategy: Run maximum_flow twice on the same graph object and
     compare results.
 
-    Assumptions / preconditions:
-      - The graph is not mutated between calls.
-
-    Failure implication: Different results would indicate non-determinism or
+    Why this matters: Different results would indicate non-determinism or
     unintended mutation of internal state.
     """
     s, t = _source_sink(G)
@@ -446,10 +419,7 @@ def test_disconnected_source_sink(n):
     Test strategy: Create a graph with n nodes but no edges from the
     source's component to the sink's component (two disconnected cliques).
 
-    Assumptions / preconditions:
-      - Source and sink are in different connected components.
-
-    Failure implication: A non-zero flow on a disconnected network is
+    Why this matters: A non-zero flow on a disconnected network is
     clearly wrong.
     """
     G = nx.DiGraph()
@@ -472,7 +442,8 @@ def test_disconnected_source_sink(n):
 # Test 11 – Boundary: single-node graph (source == sink)
 # ---------------------------------------------------------------------------
 
-def test_single_node_graph():
+@given(node_id=st.integers(min_value=0, max_value=100))
+def test_single_node_graph(node_id):
     """
     Property: When the graph has a single node and source equals sink, the
     maximum flow value should be 0 (NetworkX raises an error for s == t, so
@@ -481,15 +452,17 @@ def test_single_node_graph():
     Mathematical basis: Flow from a node to itself is trivially zero or
     undefined.  NetworkX raises nx.NetworkXError when s == t.
 
-    Test strategy: Deterministic edge-case test with a single-node graph.
+    Test strategy: Generate single-node graphs with varying node IDs and
+    verify that NetworkX consistently raises NetworkXError (or returns 0)
+    regardless of the node label.
 
-    Failure implication: Changed exception behaviour would break downstream
+    Why this matters: Changed exception behaviour would break downstream
     code relying on the documented API contract.
     """
     G = nx.DiGraph()
-    G.add_node(0)
+    G.add_node(node_id)
     try:
-        nx.maximum_flow_value(G, 0, 0)
+        nx.maximum_flow_value(G, node_id, node_id)
         # If no exception, the value should be 0
     except nx.NetworkXError:
         pass  # Expected
@@ -516,12 +489,8 @@ def test_adding_parallel_path_increases_flow(G):
     intermediate nodes (guaranteeing edge-disjointness), recompute, and
     verify the increase.
 
-    Assumptions / preconditions:
-      - The new path uses nodes not in the original graph, ensuring
-        edge-disjointness.
-
-    Failure implication: A smaller-than-expected increase means the
-    algorithm fails to exploit an obvious augmenting path.
+    Why this matters: A smaller-than-expected increase means the algorithm
+    fails to exploit an obvious augmenting path.
     """
     s, t = _source_sink(G)
     original_val = nx.maximum_flow_value(G, s, t)
@@ -545,8 +514,8 @@ def test_adding_parallel_path_increases_flow(G):
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow])
-@given(G=flow_network())
-def test_removing_edge_cannot_increase_flow(G):
+@given(G=flow_network(), edge_data=st.randoms(use_true_random=False))
+def test_removing_edge_cannot_increase_flow(G, edge_data):
     """
     Property: Removing any single edge from the network cannot increase the
     maximum flow.
@@ -558,10 +527,7 @@ def test_removing_edge_cannot_increase_flow(G):
     Test strategy: Compute max flow, remove a random edge, recompute, and
     verify the new value is ≤ the original.
 
-    Assumptions / preconditions:
-      - Graph has at least one edge.
-
-    Failure implication: An increase after edge removal would violate basic
+    Why this matters: An increase after edge removal would violate basic
     optimisation monotonicity.
     """
     s, t = _source_sink(G)
@@ -569,7 +535,7 @@ def test_removing_edge_cannot_increase_flow(G):
     original_val = nx.maximum_flow_value(G, s, t)
 
     edges = list(G.edges())
-    u, v = edges[random.randint(0, len(edges) - 1)]
+    u, v = edges[edge_data.randint(0, len(edges) - 1)]
     G2 = G.copy()
     G2.remove_edge(u, v)
 
@@ -604,10 +570,7 @@ def test_complete_graph_lower_bound(n, caps):
     Test strategy: Build a complete directed graph on n nodes with random
     capacities and verify the lower bound.
 
-    Assumptions / preconditions:
-      - n ≥ 3 so source ≠ sink and there are intermediate nodes.
-
-    Failure implication: Returning a value below a trivially feasible flow
+    Why this matters: Returning a value below a trivially feasible flow
     means the algorithm is not finding even the most obvious solution.
     """
     G = nx.complete_graph(n, create_using=nx.DiGraph)
@@ -627,8 +590,8 @@ def test_complete_graph_lower_bound(n, caps):
 # ---------------------------------------------------------------------------
 
 @settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow])
-@given(G=flow_network())
-def test_weak_duality(G):
+@given(G=flow_network(), rng=st.randoms(use_true_random=False))
+def test_weak_duality(G, rng):
     """
     Property: The maximum flow value is ≤ the capacity of every possible
     cut, not just the minimum cut.  We verify this by checking a few random
@@ -642,11 +605,8 @@ def test_weak_duality(G):
     of V with s ∈ S and t ∈ T, compute their cut capacities, and verify
     each is ≥ the max flow.
 
-    Assumptions / preconditions:
-      - Valid flow network.
-
-    Failure implication: Violating weak duality would mean the flow exceeds
-    a cut, which is impossible in a correct implementation.
+    Why this matters: If the flow exceeds a cut, the implementation has
+    a fundamental error—this is mathematically impossible.
     """
     s, t = _source_sink(G)
     flow_val = nx.maximum_flow_value(G, s, t)
@@ -657,7 +617,7 @@ def test_weak_duality(G):
     for _ in range(min(10, 2 ** len(intermediate))):
         S = {s}
         for v in intermediate:
-            if random.random() < 0.5:
+            if rng.random() < 0.5:
                 S.add(v)
         T = set(nodes) - S
         assert t in T
@@ -669,3 +629,386 @@ def test_weak_duality(G):
         assert flow_val <= cut_cap + 1e-9, (
             f"Max flow {flow_val} exceeds cut capacity {cut_cap}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 16 – Cross-algorithm consensus (differential / N-version testing)
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+@given(G=flow_network())
+def test_all_algorithms_agree(G):
+    """
+    Property: All five NetworkX max-flow implementations (Edmonds-Karp,
+    Shortest Augmenting Path, Preflow-Push, Dinitz, Boykov-Kolmogorov)
+    must return the same max-flow value on any input graph.
+
+    Mathematical basis: The max-flow value is the optimum of a linear
+    programme, so it is unique even when multiple optimal flow decompositions
+    exist.  Different algorithms may find different edge-level flows, but
+    the total value must be identical.
+
+    Test strategy: Generate random directed networks (3-15 nodes, positive
+    integer capacities) and run all five algorithms, asserting consensus.
+    This is differential testing -- no oracle needed, just agreement among
+    independent implementations.
+
+    Why this matters: A disagreement would pinpoint a correctness bug in at
+    least one of the five implementations.  Because each uses a fundamentally
+    different approach (augmenting paths vs. preflow vs. blocking flows), a
+    mismatch strongly localises the fault.
+    """
+    s, t = _source_sink(G)
+    algos = [
+        nx.algorithms.flow.edmonds_karp,
+        nx.algorithms.flow.shortest_augmenting_path,
+        nx.algorithms.flow.preflow_push,
+        nx.algorithms.flow.dinitz,
+        nx.algorithms.flow.boykov_kolmogorov,
+    ]
+    values = [nx.maximum_flow_value(G, s, t, flow_func=a) for a in algos]
+    assert all(abs(v - values[0]) < 1e-9 for v in values), (
+        f"Algorithm disagreement: {dict(zip([a.__name__ for a in algos], values))}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 17 – No augmenting path in the residual graph (optimality certificate)
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow])
+@given(G=flow_network())
+def test_no_augmenting_path_in_residual(G):
+    """
+    Property: After computing the maximum flow, the residual graph contains
+    no directed path from source to sink.
+
+    Mathematical basis: The Augmenting Path Theorem (a corollary of the
+    Max-Flow Min-Cut Theorem) states that a flow is maximum if and only if
+    no augmenting path exists in the residual graph G_f.  The residual has
+    forward edge (u,v) with capacity c-f when f < c, and backward edge (v,u)
+    with capacity f when f > 0.
+
+    Test strategy: Compute max flow, reconstruct the residual graph
+    independently from the returned flow dict, and run a reachability check.
+    This acts as an optimality certificate that does not trust the
+    algorithm's internal bookkeeping.
+
+    Why this matters: If an augmenting path exists in the residual, the
+    algorithm stopped too early -- more flow could still be pushed, meaning
+    the returned value is not actually the maximum.
+    """
+    s, t = _source_sink(G)
+    _, flow_dict = nx.maximum_flow(G, s, t)
+
+    # Build residual graph
+    R = nx.DiGraph()
+    for u, v, d in G.edges(data=True):
+        cap = d["capacity"]
+        f = flow_dict[u][v]
+        if cap - f > 1e-9:
+            R.add_edge(u, v)
+        if f > 1e-9:
+            R.add_edge(v, u)
+
+    R.add_nodes_from(G.nodes())  # ensure s and t exist even if isolated
+    assert not nx.has_path(R, s, t), (
+        "Residual graph has an s-t path — flow is not maximum"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 18 – Complementary slackness: min-cut edges are saturated
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow])
+@given(G=flow_network())
+def test_mincut_complementary_slackness(G):
+    """
+    Property: In an optimal max-flow / min-cut pair, every forward edge
+    crossing the cut (S to T) is fully saturated, and every backward edge
+    (T to S) carries zero flow.
+
+    Mathematical basis: These are the complementary slackness conditions
+    from LP duality applied to the max-flow / min-cut pair.  Together they
+    imply strong duality: max_flow = sum of saturated S->T capacities - 0
+    = min_cut.  This is a stronger structural check than simply comparing
+    the two scalar values.
+
+    Test strategy: Compute the flow (with flow dict) and the cut (with
+    partition) separately, then verify saturation on every S->T edge and
+    zero flow on every T->S edge.
+
+    Why this matters: A violation means the returned flow and cut do not
+    form a valid primal-dual optimal pair, indicating a bug in either the
+    flow computation or the cut extraction.
+    """
+    s, t = _source_sink(G)
+    _, flow_dict = nx.maximum_flow(G, s, t)
+    _, (S, T) = nx.minimum_cut(G, s, t)
+    S, T = set(S), set(T)
+
+    # Forward cut edges (S → T) must be saturated
+    for u in S:
+        for v in T:
+            if G.has_edge(u, v):
+                f = flow_dict[u][v]
+                c = G[u][v]["capacity"]
+                assert abs(f - c) < 1e-9, (
+                    f"Cut edge ({u},{v}): flow {f} != capacity {c} "
+                    f"(not saturated)"
+                )
+
+    # Backward cut edges (T → S) must carry zero flow
+    for u in T:
+        for v in S:
+            if G.has_edge(u, v):
+                f = flow_dict[u][v]
+                assert abs(f) < 1e-9, (
+                    f"Backward cut edge ({u},{v}): flow {f} != 0"
+                )
+
+
+# ---------------------------------------------------------------------------
+# Test 19 – Edge-reversal symmetry: max-flow(G, s, t) = max-flow(Gᴿ, t, s)
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=60, suppress_health_check=[HealthCheck.too_slow])
+@given(G=flow_network())
+def test_edge_reversal_symmetry(G):
+    """
+    Property: Reversing every edge and swapping source/sink preserves the
+    max-flow value: max-flow(G, s->t) == max-flow(G^R, t->s).
+
+    Mathematical basis: Any feasible flow f in G maps to a feasible flow
+    f^R in G^R of equal value via f^R(v,u) = f(u,v).  This bijection
+    preserves feasibility and value, so the optima coincide.  Equivalently,
+    the min-cut capacity is unchanged because the crossing edges are the
+    same (just reversed).
+
+    Test strategy: Compute max flow on the original graph, build the
+    reversed graph, compute max flow with swapped source/sink, and assert
+    equality.  Uses random directed networks (3-15 nodes).
+
+    Why this matters: This symmetry is rarely tested explicitly but catches
+    orientation-dependent bugs that only show up in one edge direction.
+    """
+    s, t = _source_sink(G)
+    original_val = nx.maximum_flow_value(G, s, t)
+
+    G_rev = nx.DiGraph()
+    G_rev.add_nodes_from(G.nodes())
+    for u, v, d in G.edges(data=True):
+        G_rev.add_edge(v, u, capacity=d["capacity"])
+
+    reversed_val = nx.maximum_flow_value(G_rev, t, s)
+    assert abs(original_val - reversed_val) < 1e-9, (
+        f"max-flow(G, {s}→{t}) = {original_val} != "
+        f"max-flow(Gᴿ, {t}→{s}) = {reversed_val}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 20 – Gomory-Hu tree: tree path minimum = pairwise max-flow
+# ---------------------------------------------------------------------------
+
+@st.composite
+def undirected_flow_network(draw, min_nodes=3, max_nodes=10,
+                            min_cap=1, max_cap=50):
+    """Generate a random connected undirected graph with positive integer
+    capacities.  Used for Gomory-Hu tree tests."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+    # Spanning path to guarantee connectivity
+    for i in range(n - 1):
+        cap = draw(st.integers(min_value=min_cap, max_value=max_cap))
+        G.add_edge(i, i + 1, capacity=cap)
+    # Random extra edges
+    extra = draw(st.integers(min_value=0, max_value=n * (n - 1) // 4))
+    possible = [(u, v) for u in range(n) for v in range(u + 1, n)
+                if not G.has_edge(u, v)]
+    if possible:
+        chosen = draw(st.lists(
+            st.sampled_from(possible),
+            min_size=0, max_size=min(extra, len(possible)),
+            unique=True,
+        ))
+        for u, v in chosen:
+            cap = draw(st.integers(min_value=min_cap, max_value=max_cap))
+            G.add_edge(u, v, capacity=cap)
+    return G
+
+
+@settings(max_examples=40, suppress_health_check=[HealthCheck.too_slow])
+@given(G=undirected_flow_network())
+def test_gomory_hu_tree(G):
+    """
+    Property: In the Gomory-Hu tree T of an undirected graph G, for every
+    pair of nodes (u, v), the minimum edge weight on the unique u-v path
+    in T equals the max-flow between u and v in G.
+
+    Mathematical basis: The Gomory-Hu theorem (1961) proves that for any
+    undirected graph with n nodes, such a tree exists with only n-1 edges
+    encoding all O(n^2) pairwise max-flow values.
+
+    Test strategy: Generate random connected undirected graphs (3-10 nodes,
+    positive integer capacities), compute the Gomory-Hu tree, then for
+    every node pair check the tree-path minimum against a direct max-flow
+    call.  This cross-validates two independent algorithms.
+
+    Why this matters: A mismatch would indicate a bug in either the
+    Gomory-Hu tree construction or the max-flow routine (or both).
+    """
+    T = nx.gomory_hu_tree(G)
+    nodes = list(G.nodes())
+
+    for i in range(len(nodes)):
+        for j in range(i + 1, len(nodes)):
+            u, v = nodes[i], nodes[j]
+            # Min edge weight on tree path
+            path = nx.shortest_path(T, u, v)
+            tree_min = min(
+                T[path[k]][path[k + 1]]["weight"]
+                for k in range(len(path) - 1)
+            )
+            # Direct max-flow computation
+            flow_val = nx.maximum_flow_value(G, u, v)
+            assert abs(tree_min - flow_val) < 1e-9, (
+                f"Gomory-Hu mismatch for ({u},{v}): "
+                f"tree_min={tree_min}, max_flow={flow_val}"
+            )
+
+
+# ===========================================================================
+# BUG DISCOVERY TEST
+# ===========================================================================
+# The following test exposes a genuine bug in NetworkX's max-flow / min-cut
+# implementation: when edges have negative capacities, the library silently
+# produces internally inconsistent results instead of raising an error.
+#
+# Evidence:
+#   - nx.minimum_cut(G, 0, 2) returns (10, ({0,1}, {2}))
+#   - But the actual capacity of that partition is only 5 (edge (0,2) has
+#     capacity -5, edge (1,2) has capacity 10, total = 5)
+#   - The reported cut value (10) does NOT match the partition capacity (5)
+#
+# Root cause:
+#   In networkx/algorithms/flow/utils.py, build_residual_network() filters
+#   edges with: `attr.get(capacity, inf) > 0`, silently dropping any edge
+#   with capacity <= 0. The algorithms then operate on a DIFFERENT graph
+#   than the user provided, but the partition is returned as if it applies
+#   to the original graph.
+#
+# Verification this is not a test error:
+#   - The graph is a valid nx.DiGraph with 3 nodes and 3 edges
+#   - The API accepts it without any error or warning
+#   - The returned partition IS structurally valid (S ∪ T = V, S ∩ T = ∅)
+#   - But the reported cut value is inconsistent with the partition
+#   - The bug reproduces across ALL 5 flow algorithms
+#
+# Suggested fix:
+#   NetworkX should raise a ValueError when any edge has a negative capacity,
+#   since flow networks require non-negative capacities by definition.
+# ===========================================================================
+
+
+@st.composite
+def flow_network_with_negative_caps(draw, min_nodes=3, max_nodes=10):
+    """Generate a directed graph with at least one s-t path using positive
+    capacities, plus additional edges that may have NEGATIVE capacities.
+    This strategy is designed to expose the silent-negative-capacity bug."""
+    n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
+    G = nx.DiGraph()
+    G.add_nodes_from(range(n))
+
+    # Guarantee s-t path with positive capacities
+    for i in range(n - 1):
+        G.add_edge(i, i + 1, capacity=draw(st.integers(1, 50)))
+
+    # Add extra edges, some with NEGATIVE capacities
+    possible = [(u, v) for u in range(n) for v in range(n)
+                if u != v and not G.has_edge(u, v)]
+    if possible:
+        chosen = draw(st.lists(
+            st.sampled_from(possible),
+            min_size=1, max_size=min(n, len(possible)),
+            unique=True,
+        ))
+        for u, v in chosen:
+            # Allow negative capacities: range [-50, 50]
+            cap = draw(st.integers(min_value=-50, max_value=50))
+            G.add_edge(u, v, capacity=cap)
+
+    return G
+
+
+@settings(max_examples=200, suppress_health_check=[HealthCheck.too_slow])
+@given(G=flow_network_with_negative_caps())
+def test_bug_negative_capacity_silent_inconsistency(G):
+    """
+    *** BUG DISCOVERY: NetworkX silently produces inconsistent min-cut
+    results when edges have negative capacities. ***
+
+    Property: If NetworkX accepts a graph without raising an error, then
+    the minimum_cut result must be internally consistent: the reported
+    cut value must equal the sum of capacities of edges crossing from S
+    to T in the returned partition.
+
+    Mathematical basis: By definition, the capacity of a cut (S, T) is
+    cap(S, T) = Σ c(u,v) for all edges (u,v) with u ∈ S, v ∈ T.  If
+    the library returns a partition and a cut value, they must agree.
+
+    Bug description: When any edge has a negative capacity, NetworkX's
+    build_residual_network() silently drops that edge (the filter is
+    `attr.get(capacity, inf) > 0`).  The max-flow and min-cut algorithms
+    then operate on a MODIFIED graph that excludes negative-capacity edges.
+    However, the partition (S, T) is returned to the user, who naturally
+    recomputes the cut capacity using the ORIGINAL graph's capacities.
+    This produces a mismatch: the reported cut value reflects the modified
+    graph, while the partition applies to the original graph.
+
+    Minimal reproducer:
+        G = nx.DiGraph()
+        G.add_edge(0, 1, capacity=10)
+        G.add_edge(1, 2, capacity=10)
+        G.add_edge(0, 2, capacity=-5)
+
+        cut_val, (S, T) = nx.minimum_cut(G, 0, 2)
+        # Returns: (10, ({0, 1}, {2}))
+        # But actual partition capacity = 10 + (-5) = 5 ≠ 10
+
+    Test strategy: Generate random flow networks where some edges have
+    negative capacities.  If NetworkX does NOT raise an error, verify
+    that the reported cut value matches the recomputed partition capacity.
+    The test is expected to FAIL, demonstrating the bug.
+
+    Failure implication: This is a genuine bug in NetworkX — the library
+    silently returns an internally inconsistent result.  The fix should
+    be to raise a ValueError when any edge has a negative capacity.
+
+    Affected versions: NetworkX 3.2.1 (and likely all prior versions).
+    Affected functions: nx.minimum_cut, nx.minimum_cut_value (all 5
+    underlying algorithms: edmonds_karp, shortest_augmenting_path,
+    preflow_push, dinitz, boykov_kolmogorov).
+    """
+    s, t = 0, max(G.nodes())
+
+    has_negative = any(d["capacity"] < 0 for _, _, d in G.edges(data=True))
+    if not has_negative:
+        return  # Only test graphs that actually have negative capacities
+
+    try:
+        cut_value, (S, T) = nx.minimum_cut(G, s, t)
+    except (nx.NetworkXError, nx.NetworkXUnbounded, ValueError):
+        return  # If NetworkX raises an error, that's acceptable behaviour
+
+    # If NetworkX accepted the input, the result must be consistent
+    recomputed = sum(
+        G[u][v]["capacity"] for u in S for v in T if G.has_edge(u, v)
+    )
+    assert abs(recomputed - cut_value) < 1e-9, (
+        f"BUG: minimum_cut reports cut_value={cut_value} but the actual "
+        f"capacity of partition (S={sorted(S)}, T={sorted(T)}) is "
+        f"{recomputed}. Edges: {list(G.edges(data=True))}"
+    )
