@@ -12,9 +12,9 @@ This project implements comprehensive property-based tests for critical graph al
 
 | Name | Email | Contribution |
 |------|-------|--------------|
-| Brijgopal Bharadwaj | `brijgopalb@iisc.ac.in` (SR No. 24609) | Property-Based Testing: Floyd-Warshall All-Pairs Shortest Paths |
-| M Chandan Kumar Rao | `chandankuma4@iisc.ac.in` (SR No. 24650) | Property-Based Testing: Max-Flow / Min-Cut Algorithms |
-| Shunmuga Janani | `shunmugaa@iisc.ac.in` (SR No. 24615) | Property-Based Testing: Graph Centrality Algorithms |
+| Brijgopal Bharadwaj | `brijgopalb@iisc.ac.in`(SR No. 24609) | Property-Based Testing: Floyd-Warshall All-Pairs Shortest Paths |
+| M Chandan Kumar Rao | `chandankuma4@iisc.ac.in`(SR No. 24650) | Property-Based Testing: Max-Flow / Min-Cut Algorithms |
+| Shunmuga Janani | `shunmugaa@iisc.ac.in`(SR No. 24615) | Property-Based Testing: Graph Centrality Algorithms |
 
 ---
 
