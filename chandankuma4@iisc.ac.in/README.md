@@ -576,7 +576,7 @@ test_maxflow_mincut.py::test_bug_negative_capacity_silent_inconsistency FAILED
 
 **Test:** `test_bug_negative_capacity_silent_inconsistency` (EXPECTED TO FAIL)
 
-**Severity:** Medium — affects all 5 flow algorithms in NetworkX 3.2.1
+**Severity:** Medium — the bug lives in `build_residual_network()` which is the shared entry point for all five max-flow implementations (Edmonds-Karp, Shortest Augmenting Path, Preflow-Push, Dinitz, and Boykov-Kolmogorov). Because every algorithm calls this function to construct the residual graph before doing any work, the negative-capacity edge is silently dropped before any of them even see it. Tested on NetworkX 3.2.1
 
 **Summary:** When any edge has a negative capacity, `nx.minimum_cut()` silently returns an internally inconsistent result: the reported cut value does not match the actual capacity of the returned partition.
 
