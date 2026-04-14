@@ -1,7 +1,7 @@
 # Property-Based Testing: Floyd-Warshall All-Pairs Shortest Paths
 
-**Course:** E0 251o Data Structures & Graph Analytics (2026)
-**Author:** Brijgopal Bharadwaj (`brijgopalb@iisc.ac.in`)
+- **Course:** E0 251o Data Structures & Graph Analytics (2026)
+- **Author:** Brijgopal Bharadwaj (`brijgopalb@iisc.ac.in`)
 
 ---
 
