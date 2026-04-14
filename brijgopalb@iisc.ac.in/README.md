@@ -35,6 +35,46 @@ pytest test_floyd_warshall.py -v --hypothesis-show-statistics
 
 > Tested on **NetworkX 3.6.1**, **Hypothesis >= 6.0**, **NumPy >= 1.24**, **Python 3.12**.
 
+### Expected Output
+
+All 25 tests (24 properties + 1 bug discovery) should pass:
+
+```
+$ pytest test_floyd_warshall.py -v
+============================= test session starts ==============================
+platform darwin -- Python 3.12.10, pytest-8.3.5
+hypothesis profile 'default'
+plugins: hypothesis-6.151.10
+
+test_floyd_warshall.py::test_zero_self_distance PASSED                   [  4%]
+test_floyd_warshall.py::test_triangle_inequality PASSED                  [  8%]
+test_floyd_warshall.py::test_symmetry_undirected PASSED                  [ 12%]
+test_floyd_warshall.py::test_path_weight_equals_distance PASSED          [ 16%]
+test_floyd_warshall.py::test_subpath_optimality PASSED                   [ 20%]
+test_floyd_warshall.py::test_fw_dict_vs_pred_dist PASSED                 [ 24%]
+test_floyd_warshall.py::test_fw_dict_vs_numpy PASSED                     [ 28%]
+test_floyd_warshall.py::test_fw_vs_dijkstra PASSED                       [ 32%]
+test_floyd_warshall.py::test_fw_vs_bellman_ford PASSED                   [ 36%]
+test_floyd_warshall.py::test_weight_scaling PASSED                       [ 40%]
+test_floyd_warshall.py::test_edge_addition_monotonicity PASSED           [ 44%]
+test_floyd_warshall.py::test_subgraph_distance_lower_bound PASSED        [ 48%]
+test_floyd_warshall.py::test_graph_reversal_transposes_distances PASSED  [ 52%]
+test_floyd_warshall.py::test_node_addition_invariance PASSED             [ 56%]
+test_floyd_warshall.py::test_single_node_self_distance PASSED            [ 60%]
+test_floyd_warshall.py::test_empty_graph_distances PASSED                [ 64%]
+test_floyd_warshall.py::test_disconnected_components PASSED              [ 68%]
+test_floyd_warshall.py::test_negative_cycle_detection PASSED             [ 72%]
+test_floyd_warshall.py::test_complete_graph_uniform_weight PASSED        [ 76%]
+test_floyd_warshall.py::test_path_graph_exact_distances PASSED           [ 80%]
+test_floyd_warshall.py::test_star_graph_exact_distances PASSED           [ 84%]
+test_floyd_warshall.py::test_single_edge_exact_distances PASSED          [ 88%]
+test_floyd_warshall.py::test_bipartite_parity_of_distances PASSED        [ 92%]
+test_floyd_warshall.py::test_idempotence PASSED                          [ 96%]
+test_floyd_warshall.py::test_negative_cycle_silent_failure PASSED        [100%]
+
+============================== 25 passed in ~3s ================================
+```
+
 ---
 
 ## Graph Generation: A Three-Layer Architecture
