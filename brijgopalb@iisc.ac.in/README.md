@@ -18,17 +18,6 @@ computes all-pairs shortest-path distances in O(V^3) time.
 | `nx.floyd_warshall_numpy(G, nodelist)` | `numpy.ndarray` distance matrix | NumPy-based implementation |
 | `nx.reconstruct_path(source, target, pred)` | shortest-path node list | Extracts path from predecessor dict |
 
-### Why Floyd-Warshall?
-
-Floyd-Warshall has rich mathematical structure that lends itself to
-property-based testing: triangle inequality, subpath optimality (Bellman's
-principle), symmetry in undirected graphs, transpose relationships under
-edge reversal, and linear scaling under weight multiplication.  It also
-has three distinct implementations in NetworkX (dict, dict+predecessors,
-numpy) whose outputs can be cross-validated against each other, plus two
-independent algorithms (Dijkstra, Bellman-Ford) that serve as external
-oracles for differential testing.
-
 ---
 
 ## Project Structure
@@ -78,36 +67,46 @@ use the functional `@st.composite` pattern.
 ### Architecture: Three Composable Layers
 
 ```mermaid
-flowchart TB
-    subgraph L1["Layer 1 — Topology Strategies (unweighted structure)"]
-        direction LR
-        t1[random_graph_topology]
-        t2[complete_graph_topology]
-        t3[path_graph_topology]
-        t4[cycle_graph_topology]
-        t5[star_graph_topology]
-        t6[tree_graph_topology]
-        t7[empty_graph_topology]
-        t8[disconnected_graph_topology]
-        t9[dag_topology]
-        t10[bipartite_graph_topology]
+flowchart LR
+    classDef topo    fill:#1a1a2e,stroke:#e94560,color:#eaeaea,rx:6
+    classDef mod     fill:#16213e,stroke:#0f3460,color:#eaeaea,rx:6
+    classDef builder fill:#0f3460,stroke:#e94560,color:#ffffff,font-weight:bold
+    classDef output  fill:#e94560,stroke:#c73652,color:#ffffff,font-weight:bold,rx:20
+
+    subgraph L1["🗺️  Layer 1 · Topology  (unweighted structure)"]
+        direction TB
+        t1("🎲 random_graph")
+        t2("🔗 complete_graph")
+        t3("➡️  path_graph")
+        t4("🔄 cycle_graph")
+        t5("⭐ star_graph")
+        t6("🌲 tree_graph")
+        t7("◯  empty_graph")
+        t8("✂️  disconnected")
+        t9("⬇️  dag")
+        t10("⬡  bipartite")
     end
 
-    subgraph L2["Layer 2 — Modifier Helpers (mutate in-place)"]
-        direction LR
-        m1[_assign_weights]
-        m2[_assign_uniform_weight]
-        m3[_add_self_loops]
-        m4[_add_isolated_nodes]
+    subgraph L2["🔧  Layer 2 · Modifiers  (mutate in-place)"]
+        direction TB
+        m1("⚖️  assign_weights")
+        m2("🪄 uniform_weight")
+        m3("🔁 add_self_loops")
+        m4("🏝️  add_isolated_nodes")
     end
 
-    subgraph L3["Layer 3 — Composition Entry-Point"]
+    subgraph L3["⚙️  Layer 3 · Composition"]
         gb["graph_builder()"]
     end
 
-    L1 --> L3
-    L2 --> L3
-    L3 --> out([NetworkX Graph])
+    L1 -- "topology=" --> gb
+    L2 -- "flags" --> gb
+    gb -- "yields" --> out(["📦 nx.Graph / DiGraph"])
+
+    class t1,t2,t3,t4,t5,t6,t7,t8,t9,t10 topo
+    class m1,m2,m3,m4 mod
+    class gb builder
+    class out output
 ```
 
 **Layer 1 -- Topology strategies** produce unweighted graph structure.
