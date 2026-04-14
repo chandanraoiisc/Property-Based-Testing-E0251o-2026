@@ -160,7 +160,15 @@ def dag_topology(draw, min_nodes=2, max_nodes=15, directed=True):
 
 @st.composite
 def bipartite_graph_topology(draw, min_nodes=4, max_nodes=14, directed=True):
-    """Random bipartite graph with two partitions."""
+    """Random bipartite graph with two partitions.
+
+    Note: intentionally excluded from ALL_TOPOLOGIES.  Most general FW
+    properties (triangle inequality, subpath optimality, etc.) are equally
+    well exercised by random_graph_topology.  This strategy is reserved for
+    the dedicated test_bipartite_parity_of_distances test, which exploits
+    the structural property unique to bipartite graphs: every path between
+    two nodes in the same partition has even hop-count.
+    """
     n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
     split = draw(st.integers(min_value=1, max_value=n - 1))
     left = range(split)
@@ -1501,6 +1509,87 @@ def test_single_edge_exact_distances(u, v, w):
     assert dist[v][v] == 0,   f"dist({v},{v}) = {dist[v][v]}, expected 0"
     assert dist[u][v] == w,   f"dist({u},{v}) = {dist[u][v]}, expected {w}"
     assert dist[v][u] == INF, f"dist({v},{u}) = {dist[v][u]}, expected inf"
+
+
+# ---------------------------------------------------------------------------
+# Test 24 — Bipartite parity: same-partition distances are even,
+#           cross-partition distances are odd (unit weights)
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(G_topo=bipartite_graph_topology(directed=False))
+def test_bipartite_parity_of_distances(G_topo):
+    """
+    Property: In a connected undirected bipartite graph with unit edge
+    weights, the shortest-path distance between any two distinct nodes
+    u and v satisfies:
+
+      dist(u, v) is even  iff  u and v belong to the same partition
+      dist(u, v) is odd   iff  u and v belong to different partitions
+
+    Mathematical basis: A graph is bipartite iff it contains no odd-length
+    cycles (König, 1916).  Equivalently, its nodes can be 2-coloured so
+    that every edge connects nodes of different colours.  Since every
+    edge crosses the colour boundary, any walk of k edges moves k times
+    across partitions.  After an even number of steps the walk is in the
+    same partition it started in; after an odd number it is in the
+    opposite partition.  With unit edge weights, distance = hop count, so
+    the parity of dist(u, v) is fully determined by partition membership.
+
+    Test strategy: Use bipartite_graph_topology (directed=False) to
+    generate random bipartite graphs of 4-14 nodes.  Assign weight=1 to
+    all edges so that FW distance equals hop count.  Require connectivity
+    via assume() so that all pairwise distances are finite.  Recover the
+    two-colouring with nx.bipartite.sets(), which works on any connected
+    bipartite graph.  Then verify the parity invariant for every node pair.
+
+    This test is the sole consumer of bipartite_graph_topology; the
+    strategy is excluded from ALL_TOPOLOGIES because the parity property
+    requires the bipartite structure to be preserved and is vacuous on
+    general graphs.
+
+    Assumptions / preconditions:
+      - The graph is undirected and bipartite (guaranteed by the strategy).
+      - The graph is connected (enforced by assume); disconnected pairs
+        have infinite distance and no parity to check.
+      - All edge weights are 1 so that distance equals hop count.
+
+    Why failure matters: A parity violation would mean FW found a path
+    between two same-partition nodes with an odd number of hops, implying
+    it traversed a non-existent edge or made an off-by-one error in
+    counting hops.  In a graph where the exact parity is structurally
+    determined this would be a fundamental reachability bug.
+    """
+    assume(nx.is_connected(G_topo))
+
+    G = G_topo.copy()
+    for node_u, node_v in G.edges():
+        G[node_u][node_v]["weight"] = 1
+
+    left, right = nx.bipartite.sets(G)
+
+    dist = _fw_dist(G)
+    nodes = list(G.nodes())
+
+    for node_u in nodes:
+        for node_v in nodes:
+            if node_u == node_v:
+                continue
+            d = dist[node_u][node_v]
+            if math.isinf(d):
+                continue
+            hop_count = int(round(d))  # d is an integer under unit weights
+            same_partition = (node_u in left) == (node_v in left)
+            if same_partition:
+                assert hop_count % 2 == 0, (
+                    f"dist({node_u},{node_v}) = {hop_count} is odd but both "
+                    f"nodes are in the same partition — parity violated"
+                )
+            else:
+                assert hop_count % 2 == 1, (
+                    f"dist({node_u},{node_v}) = {hop_count} is even but the "
+                    f"nodes are in different partitions — parity violated"
+                )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

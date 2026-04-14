@@ -403,7 +403,7 @@ Every topology strategy has a uniform signature
 | `empty_graph_topology` | n nodes, zero edges |
 | `disconnected_graph_topology` | Two disjoint cliques |
 | `dag_topology` | Random DAG (edges go low-index to high-index) |
-| `bipartite_graph_topology` | Two-partition random bipartite graph |
+| `bipartite_graph_topology` | Two-partition random bipartite graph — used exclusively by Test 24 (parity property); intentionally excluded from `ALL_TOPOLOGIES` |
 
 **Layer 2 -- Modifier helpers** mutate a graph in-place:
 
@@ -544,6 +544,7 @@ mindmap
 | 21 | `test_path_graph_exact_distances` | Directed path: dist(i,j) = prefix-sum of weights; dist(i,j)=inf for i>j | Parametric on `weights` list |
 | 22 | `test_star_graph_exact_distances` | Directed star: dist(hub,leaf)=spoke weight; all other non-self distances = inf | Parametric on `spoke_weights` list |
 | 23 | `test_single_edge_exact_distances` | Single edge (u,v,w): dist(u,v)=w; dist(v,u)=inf; all others = inf | Parametric on `u`, `v`, `w` |
+| 24 | `test_bipartite_parity_of_distances` | Connected bipartite + unit weights: dist(u,v) even iff same partition | `bipartite_graph_topology(directed=False)` |
 
 ### Idempotence / Determinism (Test 20)
 
