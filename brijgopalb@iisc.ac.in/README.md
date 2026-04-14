@@ -77,10 +77,37 @@ use the functional `@st.composite` pattern.
 
 ### Architecture: Three Composable Layers
 
-```
-Layer 1: Topology strategies     (unweighted structure)
-Layer 2: Modifier helpers         (weights, self-loops, isolated nodes)
-Layer 3: graph_builder()          (composes layer 1 + layer 2 in one call)
+```mermaid
+flowchart TB
+    subgraph L1["Layer 1 — Topology Strategies (unweighted structure)"]
+        direction LR
+        t1[random_graph_topology]
+        t2[complete_graph_topology]
+        t3[path_graph_topology]
+        t4[cycle_graph_topology]
+        t5[star_graph_topology]
+        t6[tree_graph_topology]
+        t7[empty_graph_topology]
+        t8[disconnected_graph_topology]
+        t9[dag_topology]
+        t10[bipartite_graph_topology]
+    end
+
+    subgraph L2["Layer 2 — Modifier Helpers (mutate in-place)"]
+        direction LR
+        m1[_assign_weights]
+        m2[_assign_uniform_weight]
+        m3[_add_self_loops]
+        m4[_add_isolated_nodes]
+    end
+
+    subgraph L3["Layer 3 — Composition Entry-Point"]
+        gb["graph_builder()"]
+    end
+
+    L1 --> L3
+    L2 --> L3
+    L3 --> out([NetworkX Graph])
 ```
 
 **Layer 1 -- Topology strategies** produce unweighted graph structure.
@@ -157,6 +184,38 @@ coverage:
 
 ## Properties Tested (20 tests + 1 bug discovery)
 
+```mermaid
+mindmap
+  root((20 Property Tests))
+    Invariant 1–5
+      test_zero_self_distance
+      test_triangle_inequality
+      test_symmetry_undirected
+      test_path_weight_equals_distance
+      test_subpath_optimality
+    Cross-Implementation 6–7
+      test_fw_dict_vs_pred_dist
+      test_fw_dict_vs_numpy
+    Cross-Algorithm 8–9
+      test_fw_vs_dijkstra
+      test_fw_vs_bellman_ford
+    Metamorphic 10–14
+      test_weight_scaling
+      test_edge_addition_monotonicity
+      test_subgraph_distance_lower_bound
+      test_graph_reversal_transposes_distances
+      test_node_addition_invariance
+    Boundary 15–18
+      test_single_node_self_distance
+      test_empty_graph_distances
+      test_disconnected_components
+      test_negative_cycle_detection
+    Postcondition 19
+      test_complete_graph_uniform_weight
+    Idempotence 20
+      test_idempotence
+```
+
 ### Invariant Properties (Tests 1-5)
 
 | # | Test | Property | Generator |
@@ -228,6 +287,25 @@ Floyd-Warshall silently returns invalid distance values when the input
 graph contains a negative-weight cycle.  In contrast, NetworkX's other
 shortest-path algorithms (`single_source_bellman_ford`,
 `johnson`) raise `NetworkXUnbounded` on the same input.
+
+```mermaid
+sequenceDiagram
+    participant U as User Code
+    participant FW as floyd_warshall
+    participant BF as single_source_bellman_ford
+    participant J  as johnson
+
+    Note over U: Graph G with negative cycle<br/>0→1(+1), 1→2(+1), 2→0(−5)
+
+    U->>FW: floyd_warshall(G)
+    FW-->>U: ⚠️ Returns invalid distances silently<br/>{0:{0:−3, 1:−2, …}, …}
+
+    U->>BF: single_source_bellman_ford_path_length(G, 0)
+    BF-->>U: ✅ Raises NetworkXUnbounded
+
+    U->>J: johnson(G)
+    J-->>U: ✅ Raises NetworkXUnbounded
+```
 
 ### Minimal Reproducer
 
