@@ -1,0 +1,23 @@
+brijgopalb@iisc.ac.in/README.md
+  ce88a214c92140df 70-87,90-95,98,102-104,106-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "9fd534fad3f2ebfba1b73d0ac96bb9a82733942b",
+  "prompts": {
+    "ce88a214c92140df": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "082fb95f-09e3-4497-bb4a-4014c540473f",
+        "model": "copilot/claude-opus-4.6"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 25,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    }
+  }
+}
