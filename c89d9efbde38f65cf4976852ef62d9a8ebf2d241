@@ -1,0 +1,23 @@
+brijgopalb@iisc.ac.in/README.md
+  c793b6854999b180 3-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "c89d9efbde38f65cf4976852ef62d9a8ebf2d241",
+  "prompts": {
+    "c793b6854999b180": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "54e245c6-65f0-4352-b35e-1ff6561b2e41",
+        "model": "copilot/claude-sonnet-4.6"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 989,
+      "total_deletions": 0,
+      "accepted_lines": 989,
+      "overriden_lines": 0
+    }
+  }
+}
