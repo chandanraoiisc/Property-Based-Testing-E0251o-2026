@@ -536,11 +536,14 @@ mindmap
 | 17 | `test_disconnected_components` | Cross-component distances are infinite | `graph_builder(topology=disconnected_graph_topology)` |
 | 18 | `test_negative_cycle_detection` | Negative cycle produces dist(u,u) < 0 | `negative_cycle_digraph()` |
 
-### Postcondition Properties (Test 19)
+### Postcondition Properties (Tests 19–23)
 
 | # | Test | Property | Generator |
 |---|------|----------|-----------|
-| 19 | `test_complete_graph_uniform_weight` | Complete digraph with uniform weight w: dist(u,v) = w | Parametric on `n`, `w` |
+| 19 | `test_complete_graph_uniform_weight` | Complete digraph, uniform weight w: dist(u,v) = w for all u≠v | Parametric on `n`, `w` |
+| 21 | `test_path_graph_exact_distances` | Directed path: dist(i,j) = prefix-sum of weights; dist(i,j)=inf for i>j | Parametric on `weights` list |
+| 22 | `test_star_graph_exact_distances` | Directed star: dist(hub,leaf)=spoke weight; all other non-self distances = inf | Parametric on `spoke_weights` list |
+| 23 | `test_single_edge_exact_distances` | Single edge (u,v,w): dist(u,v)=w; dist(v,u)=inf; all others = inf | Parametric on `u`, `v`, `w` |
 
 ### Idempotence / Determinism (Test 20)
 

@@ -1306,6 +1306,203 @@ def test_complete_graph_uniform_weight(n, w):
                 )
 
 
+# ---------------------------------------------------------------------------
+# Test 21 — Directed path graph: exact cumulative distances
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(
+    weights=st.lists(st.integers(min_value=1, max_value=50),
+                     min_size=2, max_size=12),
+)
+def test_path_graph_exact_distances(weights):
+    """
+    Property: In a directed path 0 → 1 → … → n-1 with edge weights
+    w_0, w_1, …, w_{n-2}, the Floyd-Warshall distance from node i to
+    node j (i < j) is exactly the sum of weights w_i + w_{i+1} + … +
+    w_{j-1}, and dist(i, j) = inf for i > j (no back-edges).
+
+    Mathematical basis: A directed path has exactly one route between
+    any forward pair (i, j): the unique sequence of edges i→i+1→…→j.
+    Its cost is the prefix-sum difference  prefix[j] - prefix[i]  where
+    prefix[k] = w_0 + … + w_{k-1}.  Because there are no back-edges,
+    all reverse distances are infinite.  This gives a closed-form oracle
+    for every entry of the distance matrix with no ambiguity.
+
+    Test strategy: Hypothesis draws a list of 2–12 positive integer
+    weights; the test builds the corresponding directed path, computes
+    FW distances, and checks every pair against the prefix-sum formula.
+    Positive weights rule out negative cycles.  Path graphs are the
+    simplest DAG and serve as a ground-truth stress-test for the
+    algorithm's forward-reachability handling.
+
+    Assumptions / preconditions:
+      - All weights are positive (>= 1), so no negative cycles.
+      - The graph is a strictly directed path (no reverse edges).
+
+    Why failure matters: An incorrect forward distance would mean the
+    algorithm missed the only available path — a fundamental traversal
+    bug.  A finite reverse distance would mean the algorithm invented an
+    edge that doesn't exist, a structural initialisation error.
+    """
+    n = len(weights) + 1   # n nodes, n-1 edges
+    G = nx.DiGraph()
+    G.add_nodes_from(range(n))
+    for i, w in enumerate(weights):
+        G.add_edge(i, i + 1, weight=w)
+
+    # Build prefix sums: prefix[k] = sum of weights for edges 0..k-1
+    prefix = [0] * n
+    for i in range(1, n):
+        prefix[i] = prefix[i - 1] + weights[i - 1]
+
+    dist = _fw_dist(G)
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                assert dist[i][j] == 0, (
+                    f"dist({i},{i}) = {dist[i][j]}, expected 0"
+                )
+            elif i < j:
+                expected = prefix[j] - prefix[i]
+                assert dist[i][j] == expected, (
+                    f"dist({i},{j}) = {dist[i][j]}, expected {expected} "
+                    f"(prefix[{j}]-prefix[{i}])"
+                )
+            else:  # i > j: no back-edge exists
+                assert dist[i][j] == INF, (
+                    f"dist({i},{j}) = {dist[i][j]}, expected inf "
+                    f"(no back-edges on directed path)"
+                )
+
+
+# ---------------------------------------------------------------------------
+# Test 22 — Directed star graph: exact hub-to-leaf and leaf-to-leaf distances
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(
+    spoke_weights=st.lists(
+        st.integers(min_value=1, max_value=50),
+        min_size=2, max_size=10,
+    ),
+)
+def test_star_graph_exact_distances(spoke_weights):
+    """
+    Property: In a directed star with hub node 0 and leaves 1…k, where
+    every edge points outward (hub → leaf) with weight w_i for leaf i,
+    the distances satisfy:
+
+      dist(0, i)  = w_i          (direct spoke)
+      dist(i, 0)  = inf          (no inward edges)
+      dist(i, j)  = inf  (i ≠ j) (leaves are not connected to each other)
+      dist(i, i)  = 0
+
+    Mathematical basis: Because all edges are hub → leaf, leaves i and j
+    (i ≠ j) have no directed path between them.  The hub can reach every
+    leaf directly; no leaf can reach anything else.  Every closed-form
+    value is determined by the graph structure alone, giving a complete
+    oracle for all O(n^2) distance matrix entries.
+
+    Test strategy: Hypothesis draws 2–10 spoke weights.  The test builds
+    a directed star (hub=0, leaves=1..k), runs floyd_warshall, and checks
+    every entry against the formula above.  The star topology is the
+    extreme case of a hub-and-spoke network and exercises the algorithm's
+    handling of nodes with high out-degree but zero in-degree (leaves)
+    and the reverse.
+
+    Assumptions / preconditions:
+      - All spoke weights are positive (>= 1).
+      - The star is strictly directed outward (hub → leaf only).
+
+    Why failure matters: A finite dist(i, j) for two distinct leaves
+    would mean the algorithm constructed a phantom path through a
+    non-existent edge — an adjacency-initialisation error.  A wrong
+    dist(0, i) would mean it misread the direct edge weight.
+    """
+    k = len(spoke_weights)      # number of leaves
+    hub = 0
+    leaves = list(range(1, k + 1))
+
+    G = nx.DiGraph()
+    G.add_nodes_from([hub] + leaves)
+    for leaf, w in zip(leaves, spoke_weights):
+        G.add_edge(hub, leaf, weight=w)
+
+    dist = _fw_dist(G)
+    nodes = [hub] + leaves
+
+    for u in nodes:
+        for v in nodes:
+            if u == v:
+                assert dist[u][v] == 0, (
+                    f"dist({u},{u}) = {dist[u][v]}, expected 0"
+                )
+            elif u == hub:  # hub → leaf: direct spoke
+                expected = spoke_weights[v - 1]
+                assert dist[hub][v] == expected, (
+                    f"dist(hub,{v}) = {dist[hub][v]}, expected {expected}"
+                )
+            else:  # leaf → anything, or leaf → leaf: no path
+                assert dist[u][v] == INF, (
+                    f"dist({u},{v}) = {dist[u][v]}, expected inf "
+                    f"(no outgoing edges from leaves)"
+                )
+
+
+# ---------------------------------------------------------------------------
+# Test 23 — Single-edge graph: exact distances and asymmetry
+# ---------------------------------------------------------------------------
+
+@settings(max_examples=MAX_EXAMPLES, suppress_health_check=SLOW_OK)
+@given(
+    u=st.integers(min_value=0, max_value=10),
+    v=st.integers(min_value=0, max_value=10),
+    w=st.integers(min_value=1, max_value=100),
+)
+def test_single_edge_exact_distances(u, v, w):
+    """
+    Property: A directed graph containing exactly one edge (u, v) with
+    weight w (u ≠ v) has:
+
+      dist(u, v) = w    (the only path)
+      dist(v, u) = inf  (no reverse path)
+      dist(x, y) = inf  for all other distinct pairs (x, y)
+      dist(x, x) = 0    for both nodes x
+
+    Mathematical basis: With a single directed edge there is exactly one
+    non-trivial pair for which a finite path exists.  The shortest (and
+    only) path from u to v has weight w.  All other ordered pairs have no
+    connecting path.  This is the most minimal non-trivial input:
+    two nodes and one edge — the simplest possible non-empty graph.
+
+    Test strategy: Hypothesis draws two distinct node labels (filtered via
+    assume) and one positive integer weight.  The four distance values are
+    fully determined by these three parameters, providing a complete oracle
+    with no ambiguity.
+
+    Assumptions / preconditions:
+      - u ≠ v (single non-self-loop edge).
+      - w > 0 (positive weight).
+
+    Why failure matters: An error on this minimal input indicates the most
+    basic initialization of the FW distance table is wrong — either the
+    direct edge weight is misread, or the algorithm sets a finite distance
+    where no path exists (a false positive reachability bug).
+    """
+    assume(u != v)
+
+    G = nx.DiGraph()
+    G.add_edge(u, v, weight=w)
+
+    dist = _fw_dist(G)
+
+    assert dist[u][u] == 0,   f"dist({u},{u}) = {dist[u][u]}, expected 0"
+    assert dist[v][v] == 0,   f"dist({v},{v}) = {dist[v][v]}, expected 0"
+    assert dist[u][v] == w,   f"dist({u},{v}) = {dist[u][v]}, expected {w}"
+    assert dist[v][u] == INF, f"dist({v},{u}) = {dist[v][u]}, expected inf"
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # IDEMPOTENCE / DETERMINISM (Test 20)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1430,6 +1627,7 @@ def test_negative_cycle_silent_failure():
     )
 
     floyd_warshall_raised = False
+    dist = None
     try:
         dist = nx.floyd_warshall(G)
     except (nx.NetworkXUnbounded, nx.NetworkXError):
@@ -1439,6 +1637,7 @@ def test_negative_cycle_silent_failure():
         "Floyd-Warshall now raises on negative cycles -- the bug may be "
         "fixed!  Update this test to expect the exception."
     )
+    assert dist is not None, "dist was not assigned (unexpected exception path)"
 
     assert dist[0][0] < 0, (
         "Negative cycle should produce negative self-distance"
