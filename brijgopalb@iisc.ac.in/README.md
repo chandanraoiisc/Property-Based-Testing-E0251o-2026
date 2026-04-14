@@ -20,6 +20,284 @@ computes all-pairs shortest-path distances in O(V^3) time.
 
 ---
 
+## Example Graphs
+
+Concrete worked examples for key test properties.  Each example shows a
+small specific graph, the exact Floyd-Warshall output, and the test that
+verifies the property.
+
+> **Color key (all diagrams)**
+> - 🔵 Blue — general directed graph nodes
+> - 🟢 Green — source node / Component A
+> - 🟡 Amber — sink / target / Component B
+> - 🟣 Violet — reversed graph nodes
+> - 🔴 Red — negative-cycle nodes
+
+---
+
+### Example 1 — Zero Self-Distance and Triangle Inequality (Tests 1, 2)
+
+The 2-hop path 1 → 2 → 3 costs 5 + 1 = 6 but the direct edge 1 → 3 costs 2,
+so Floyd-Warshall must choose the direct edge.
+
+```mermaid
+flowchart LR
+    classDef blue fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    n0((0)) -->|3| n1((1))
+    n1 -->|5| n2((2))
+    n1 -->|2| n3((3))
+    n2 -->|1| n3
+    class n0,n1,n2,n3 blue
+```
+
+```python
+G = nx.DiGraph()
+G.add_edge(0, 1, weight=3)
+G.add_edge(1, 2, weight=5)
+G.add_edge(1, 3, weight=2)
+G.add_edge(2, 3, weight=1)   # 2-hop: 1→2→3 costs 6 — direct 1→3 wins at 2
+
+dist = nx.floyd_warshall(G)
+# dist[0][0] = 0             ← Test 1: zero self-distance
+# dist[1][3] = 2             ← direct edge beats 2-hop path
+# dist[0][3] = 5             ← 0→1(3) + 1→3(2)
+#
+# Triangle inequality check (Test 2):
+#   dist[0][3]  ≤  dist[0][1] + dist[1][3]
+#       5       ≤      3      +     2       ✓
+```
+
+**Why this matters for Test 2:** `dag_with_weights` generates DAGs with
+mixed-sign weights.  A triangle-inequality violation would mean the
+algorithm reported a path from 0 to 3 longer than the sum of its two
+sub-legs — a logical impossibility for any correct shortest-path algorithm.
+
+---
+
+### Example 2 — Path Reconstruction Consistency (Test 4)
+
+The predecessor dictionary (`pred`) and the distance dictionary (`dist`)
+are computed together.  The weight of any reconstructed path must exactly
+match the reported distance.
+
+```mermaid
+flowchart LR
+    classDef src fill:#10b981,stroke:#059669,color:#fff
+    classDef mid fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef snk fill:#f59e0b,stroke:#d97706,color:#fff
+    n0((0)) -->|4| n1((1))
+    n1 -->|1| n2((2))
+    n2 -->|7| n3((3))
+    class n0 src
+    class n1,n2 mid
+    class n3 snk
+```
+
+```python
+G = nx.DiGraph()
+G.add_edge(0, 1, weight=4)
+G.add_edge(1, 2, weight=1)
+G.add_edge(2, 3, weight=7)
+
+pred, dist = nx.floyd_warshall_predecessor_and_distance(G)
+path = nx.reconstruct_path(0, 3, pred)   # → [0, 1, 2, 3]
+
+# Sum of edge weights along the reconstructed path:
+path_weight = 4 + 1 + 7   # = 12
+# dist[0][3]  =  12  ✓  (Test 4 asserts path_weight == dist[0][3])
+```
+
+**Why this matters:** `pred` and `dist` could theoretically be
+built by code paths that diverge.  A silent off-by-one in either would
+make the reconstructed path claim a different cost than the reported
+distance, breaking any consumer of `reconstruct_path`.
+
+---
+
+### Example 3 — Symmetry on Undirected Graphs (Test 3)
+
+In an undirected graph every edge is bidirectional, so
+`dist(u, v)` must always equal `dist(v, u)`.
+
+```mermaid
+flowchart LR
+    classDef violet fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    n0((0)) ---|3| n1((1))
+    n1 ---|5| n2((2))
+    n1 ---|4| n3((3))
+    n2 ---|2| n3
+    class n0,n1,n2,n3 violet
+```
+
+```python
+G = nx.Graph()
+G.add_edge(0, 1, weight=3)
+G.add_edge(1, 2, weight=5)
+G.add_edge(1, 3, weight=4)
+G.add_edge(2, 3, weight=2)
+
+dist = nx.floyd_warshall(G)
+# Shortest 0 → 2:  0─1(3) + 1─2(5) = 8   (not via 3: 3+4+2=9)
+# dist[0][2] = 8,  dist[2][0] = 8   ← symmetry holds (Test 3) ✓
+# dist[0][3] = 7,  dist[3][0] = 7   ← symmetry holds           ✓
+```
+
+**Why this matters:** If Floyd-Warshall initialises only one direction when
+converting `nx.Graph` edges to its internal distance table, the symmetry
+would break — distances would be finite in one direction and infinite in
+the other on the same undirected edge.
+
+---
+
+### Example 4 — Weight Scaling is Linear (Test 10)
+
+Multiplying every edge weight by *k* must multiply every finite distance by
+*k*, because the **same** path remains optimal and its cost scales linearly.
+
+```mermaid
+flowchart LR
+    subgraph orig["Original  ·  k = 1  ·  dist[0][2] = 4"]
+        a0((0)) -->|2| a1((1))
+        a1 -->|5| a2((2))
+        a0 -->|3| a3((3))
+        a3 -->|1| a2
+    end
+    subgraph scld["Scaled  ·  k = 3  ·  dist[0][2] = 12 = 3 × 4"]
+        b0((0)) -->|6| b1((1))
+        b1 -->|15| b2((2))
+        b0 -->|9| b3((3))
+        b3 -->|3| b2
+    end
+    classDef blue  fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef green fill:#10b981,stroke:#059669,color:#fff
+    class a0,a1,a2,a3 blue
+    class b0,b1,b2,b3 green
+```
+
+```python
+G = nx.DiGraph()
+G.add_edge(0, 1, weight=2); G.add_edge(1, 2, weight=5)
+G.add_edge(0, 3, weight=3); G.add_edge(3, 2, weight=1)
+# Shortest 0→2: via node 3  →  3 + 1 = 4  (beats 2 + 5 = 7)
+
+k = 3
+G_scaled = G.copy()
+for u, v in G_scaled.edges():
+    G_scaled[u][v]["weight"] *= k
+# Shortest 0→2 in scaled: via node 3  →  9 + 3 = 12 = 3 × 4  ✓
+
+# Test 10 asserts: dist_scaled[u][v] == k * dist_orig[u][v]  for all finite pairs
+```
+
+---
+
+### Example 5 — Graph Reversal Transposes the Distance Matrix (Test 13)
+
+Flipping every edge direction creates a bijection between u→v paths in G
+and v→u paths in G^R, so `dist_G(u,v) == dist_GR(v,u)`.
+
+```mermaid
+flowchart LR
+    subgraph GG["Graph G"]
+        g0((0)) -->|2| g1((1))
+        g1 -->|3| g2((2))
+        g1 -->|1| g3((3))
+    end
+    subgraph GR["Reversed G^R"]
+        r2((2)) -->|3| r1((1))
+        r3((3)) -->|1| r1
+        r1 -->|2| r0((0))
+    end
+    classDef blue   fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef violet fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    class g0,g1,g2,g3 blue
+    class r0,r1,r2,r3 violet
+```
+
+```python
+G = nx.DiGraph()
+G.add_edge(0, 1, weight=2)
+G.add_edge(1, 2, weight=3)
+G.add_edge(1, 3, weight=1)
+
+dist_G  = nx.floyd_warshall(G)
+dist_GR = nx.floyd_warshall(G.reverse())
+
+# dist_G[0][2]  = 5    dist_GR[2][0]  = 5  ← transpose equality (Test 13) ✓
+# dist_G[0][3]  = 3    dist_GR[3][0]  = 3  ✓
+# dist_G[2][0]  = inf  dist_GR[0][2]  = inf  ✓ (no return path in either direction)
+```
+
+---
+
+### Example 6 — Infinite Cross-Component Distances (Test 17)
+
+With no edges between the two components, any cross-component distance
+must be infinite — Floyd-Warshall should never fabricate a path.
+
+```mermaid
+flowchart LR
+    subgraph A["Component A"]
+        a0((0)) -->|5| a1((1))
+    end
+    subgraph B["Component B"]
+        b2((2)) -->|4| b3((3))
+    end
+    classDef green fill:#10b981,stroke:#059669,color:#fff
+    classDef amber fill:#f59e0b,stroke:#d97706,color:#fff
+    class a0,a1 green
+    class b2,b3 amber
+```
+
+```python
+G = nx.DiGraph()
+G.add_edge(0, 1, weight=5)
+G.add_edge(2, 3, weight=4)
+# No edges cross the component boundary
+
+dist = nx.floyd_warshall(G)
+# dist[0][2] = inf  ← no cross-component path (Test 17) ✓
+# dist[1][3] = inf  ✓
+# dist[0][1] = 5    ← within-component distance unaffected ✓
+```
+
+---
+
+### Example 7 — Negative Cycle Produces Negative Self-Distance (Test 18)
+
+The three-node cycle has total weight 2 + 1 − 6 = **−3**.
+Floyd-Warshall computes shortest *walks*, so traversing the cycle once
+drives `dist(u, u)` below zero for every node on it.
+
+```mermaid
+flowchart LR
+    classDef red fill:#ef4444,stroke:#b91c1c,color:#fff
+    n0((0)) -->|"+2"| n1((1))
+    n1 -->|"+1"| n2((2))
+    n2 -->|"−6"| n0
+    class n0,n1,n2 red
+```
+
+```python
+G = nx.DiGraph()
+G.add_edge(0, 1, weight=2)
+G.add_edge(1, 2, weight=1)
+G.add_edge(2, 0, weight=-6)   # cycle total: 2 + 1 − 6 = −3
+
+dist = nx.floyd_warshall(G)
+# dist[0][0] = -3,  dist[1][1] = -3,  dist[2][2] = -3
+# ← all cycle nodes get a negative self-distance (Test 18) ✓
+```
+
+**What Test 18 detects:** A negative diagonal entry is the observable
+signal that a negative cycle exists.  Test 18 uses `negative_cycle_digraph`
+(which forces a Hamiltonian cycle with negative total weight) and asserts
+that at least one `dist[v][v] < 0`.  This is distinct from the *bug
+discovery* test, which documents that Floyd-Warshall does **not** raise
+an exception the way Bellman-Ford does.
+
+---
+
 ## Project Structure
 
 ```
