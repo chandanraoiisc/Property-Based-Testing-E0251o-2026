@@ -1,0 +1,23 @@
+brijgopalb@iisc.ac.in/README.md
+  62f704dd06f56454 38-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "991933df0d139fe91b11ae546cbce35fc6bbcaed",
+  "prompts": {
+    "62f704dd06f56454": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aed0fd9d-2e62-488c-afe5-7514a0104f03",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 40,
+      "total_deletions": 0,
+      "accepted_lines": 40,
+      "overriden_lines": 0
+    }
+  }
+}
