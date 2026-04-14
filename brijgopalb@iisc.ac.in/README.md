@@ -62,7 +62,9 @@ flowchart LR
     gb -- "yields" --> out(["nx.Graph / DiGraph"])
 ```
 
-**Layer 1** provides 10 topology strategies, each with a uniform `(draw, min_nodes, max_nodes, directed)` signature so they're plug-and-play. **Layer 2** mutates graphs in-place (weights, self-loops, isolates). **Layer 3** is `graph_builder()` — a single composable entry-point:
+- **Layer 1** provides 10 topology strategies, each with a uniform `(draw, min_nodes, max_nodes, directed)` signature so they're plug-and-play.
+- **Layer 2** mutates graphs in-place (weights, self-loops, isolates).
+- **Layer 3** is `graph_builder()` — a single composable entry-point:
 
 ```python
 @given(G=graph_builder())                                    # mixed topologies, positive weights
