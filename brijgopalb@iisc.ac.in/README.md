@@ -612,11 +612,49 @@ dist = nx.floyd_warshall(G)
 
 ### Root Cause
 
-The Floyd-Warshall source code (`floyd_warshall_predecessor_and_distance`)
-performs the standard triple-nested relaxation loop without any negative-
-cycle detection.  The docstring states "This algorithm can still fail if
-there are negative cycles" but does not define what "fail" means, does not
-raise an exception, and does not emit a warning.
+The absence of a negative-cycle check is visible at a precise location in
+the NetworkX source:
+
+- **File:** `networkx/algorithms/shortest_paths/dense.py`
+- **Function:** `floyd_warshall_predecessor_and_distance` — defined at **line 90**
+- **Relaxation loop:** **lines 160–168** (triple-nested DP)
+- **Return statement:** **line 169** — returns immediately after the loop
+
+The full relaxation loop that ends without any diagnostic:
+
+```python
+# dense.py  lines 160–169
+for w in G:           # outer loop over intermediate vertices
+    dist_w = dist[w]
+    for u in G:
+        dist_u = dist[u]
+        for v in G:
+            d = dist_u[w] + dist_w[v]
+            if dist_u[v] > d:
+                dist_u[v] = d
+                pred[u][v] = pred[w][v]
+return dict(pred), dict(dist)   # ← returns with no diagonal check
+```
+
+The docstring at **line 131** says _"This algorithm can still fail if there
+are negative cycles"_ but never specifies what "fail" means — no exception,
+no `warnings.warn`, no documentation of the negative-diagonal signal.
+
+### Suggested Fix
+
+A single O(n) post-loop diagonal scan, inserted after line 168:
+
+```python
+# Proposed addition after line 168:
+if any(dist[v][v] < 0 for v in G):
+    raise nx.NetworkXUnbounded(
+        "Negative cycle detected in floyd_warshall."
+    )
+```
+
+This is negligible overhead vs the O(n³) main loop and exactly mirrors the
+check already present in `networkx/algorithms/shortest_paths/weighted.py`
+for Bellman-Ford and Johnson's algorithm.
 
 ### Impact
 
