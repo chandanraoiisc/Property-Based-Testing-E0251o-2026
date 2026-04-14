@@ -15,7 +15,7 @@ Functions under test
 
 This single file contains:
   - Reusable Hypothesis graph-generation strategies (3-layer architecture)
-  - 20 property-based tests with detailed docstrings
+  - 24 property-based tests with detailed docstrings
   - 1 bug-discovery test documenting an API inconsistency in NetworkX
 
 All tests use the Hypothesis library to generate diverse graph structures.
@@ -1285,7 +1285,7 @@ def test_negative_cycle_detection(G):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# POSTCONDITION PROPERTIES (Test 19)
+# POSTCONDITION PROPERTIES (Tests 19, 21 - 24)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
