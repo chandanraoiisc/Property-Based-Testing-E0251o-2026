@@ -77,11 +77,63 @@ Two **standalone strategies** have bespoke logic that doesn't fit the builder: `
 
 Hypothesis strategies are first-class objects that compose natively via `draw()`, `st.one_of()`, and `st.flatmap()`. Wrapping them in a class would add indirection without improving composability — matching the pattern used by Hypothesis itself, `hypothesis-networkx`, and NetworkX's own test suite.
 
+### Edge-Case Coverage
+
+An empirical audit confirmed the strategy library generates every structural edge case that matters for Floyd-Warshall correctness:
+
+| Edge Case | How Generated | Why It Matters |
+|---|---|---|
+| Self-loops | `self_loops=True` | Positive self-loop must not change dist(v,v)=0 |
+| Isolated nodes | `isolated_nodes=True` | Must produce dist(iso,v) = ∞ for v ≠ iso |
+| Uniform weights | `uniform_weight=True` | Degenerate case where BFS-equivalence holds |
+| Zero-weight edges | `min_weight=0` | Boundary for non-negative weight assumptions |
+| Negative edges (no neg cycle) | `dag_with_weights` | DAG structure guarantees safety |
+| Negative cycles | `negative_cycle_digraph` | Must produce dist(v,v) < 0 on cycle nodes |
+| Disconnected components | `disconnected_graph_topology` | Cross-component dist must be ∞ |
+| Empty graph (0 edges) | `empty_graph_topology` | Degenerate boundary case |
+| Bipartite structure | `bipartite_graph_topology` | Restricted connectivity with parity invariants |
+
 ---
 
 ## The 24 Property Tests
 
 Each test has a detailed docstring covering: (1) what property is tested, (2) mathematical basis, (3) test strategy, (4) assumptions, and (5) why failure matters.
+
+```mermaid
+mindmap
+  root((24 Property Tests))
+    Invariant 1–5
+      zero self-distance
+      triangle inequality
+      symmetry
+      path reconstruction
+      subpath optimality
+    Cross-Impl 6–7
+      dict vs pred+dist
+      dict vs numpy
+    Cross-Algo 8–9
+      FW vs Dijkstra
+      FW vs Bellman-Ford
+    Metamorphic 10–14
+      weight scaling
+      edge addition
+      subgraph bound
+      graph reversal
+      node addition
+    Boundary 15–18
+      single node
+      empty graph
+      disconnected
+      negative cycle
+    Postcondition 19–24
+      complete uniform
+      path exact
+      star exact
+      single edge
+      bipartite parity
+    Idempotence 20
+      determinism
+```
 
 ### Invariant Properties
 
@@ -144,7 +196,7 @@ Each test has a detailed docstring covering: (1) what property is tested, (2) ma
 
 ---
 
-## Two Illustrative Examples
+## Illustrative Examples
 
 ### Triangle Inequality on a DAG with Shortcuts (Tests 1, 2)
 
@@ -188,6 +240,37 @@ dist = nx.floyd_warshall(G)
 ```
 
 This is also the setup for the **bug discovery** below: Floyd-Warshall detects the negative cycle in the diagonal but never *tells* the user about it.
+
+### Graph Reversal Transposes the Distance Matrix (Test 13)
+
+Flipping every edge creates a bijection between u→v paths in G and v→u paths in G^R. This metamorphic property must hold for *every* node pair.
+
+```mermaid
+flowchart LR
+    subgraph GG["Graph G"]
+        g0((0)) -->|2| g1((1))
+        g1 -->|3| g2((2))
+        g1 -->|1| g3((3))
+    end
+    subgraph GR["Reversed G^R"]
+        r2((2)) -->|3| r1((1))
+        r3((3)) -->|1| r1
+        r1 -->|2| r0((0))
+    end
+    classDef blue   fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef violet fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    class g0,g1,g2,g3 blue
+    class r0,r1,r2,r3 violet
+```
+
+```python
+dist_G  = nx.floyd_warshall(G)
+dist_GR = nx.floyd_warshall(G.reverse())
+
+# dist_G[0][2]  = 5    dist_GR[2][0]  = 5   ← transpose equality ✓
+# dist_G[0][3]  = 3    dist_GR[3][0]  = 3   ✓
+# dist_G[2][0]  = inf  dist_GR[0][2]  = inf ✓ (no return path in either direction)
+```
 
 ---
 
@@ -237,7 +320,7 @@ if any(dist[v][v] < 0 for v in G):
 | `@given` | All property tests | Generate random inputs |
 | `@example` | Test 1 (self-loop graph) | Pin important edge cases |
 | `@settings` | All tests | Control `max_examples` and `suppress_health_check` |
-| `assume()` | Tests 11, 12, 17 | Skip invalid inputs (no non-edges, too few edges, single component) |
+| `assume()` | Tests 11, 12, 17, 23 | Skip invalid inputs (no non-edges, too few edges, single component, u=v) |
 | `st.data()` | Tests 11, 12 | Draw values dependent on the generated graph for proper shrinking |
 | `event()` | Tests 1, 8 | Track topology/size distribution for coverage analysis |
 | `target()` | Test 2 | Guide generation toward denser DAGs |
