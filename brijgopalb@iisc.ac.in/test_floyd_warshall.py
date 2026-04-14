@@ -168,17 +168,36 @@ def bipartite_graph_topology(draw, min_nodes=4, max_nodes=14, directed=True):
     the dedicated test_bipartite_parity_of_distances test, which exploits
     the structural property unique to bipartite graphs: every path between
     two nodes in the same partition has even hop-count.
+
+    When ``directed=False`` the returned graph is always connected.  This
+    avoids the HealthCheck.filter_too_much problem that would arise if the
+    test used ``assume(nx.is_connected(G))`` on a sparse random bipartite
+    graph (most of which are disconnected).  Connectivity is guaranteed by
+    a caterpillar spanning tree: left[0] is connected to every right node,
+    and every remaining left node is connected to right[0].  All added
+    edges cross the bipartition, so the graph remains bipartite.
     """
     n = draw(st.integers(min_value=min_nodes, max_value=max_nodes))
     split = draw(st.integers(min_value=1, max_value=n - 1))
-    left = range(split)
-    right = range(split, n)
+    left = list(range(split))
+    right = list(range(split, n))
 
     G = nx.DiGraph() if directed else nx.Graph()
     G.add_nodes_from(range(n))
+
+    if not directed:
+        # Caterpillar spanning tree guaranteeing connectivity:
+        #   left[0] -- right[j]  for every j  (left[0] as hub)
+        #   left[i] -- right[0]  for every i > 0
+        for rj in right:
+            G.add_edge(left[0], rj)
+        for li in left[1:]:
+            G.add_edge(li, right[0])
+
+    # Add random extra cross-partition edges
     for i in left:
         for j in right:
-            if draw(st.booleans()):
+            if not G.has_edge(i, j) and draw(st.booleans()):
                 G.add_edge(i, j)
                 if directed and draw(st.booleans()):
                     G.add_edge(j, i)
@@ -216,15 +235,22 @@ def _assign_uniform_weight(draw, G, min_weight=1, max_weight=50):
 
 
 def _add_self_loops(draw, G, min_weight=1, max_weight=50, max_loops=None):
-    """Add self-loops with positive weights to a random subset of nodes."""
+    """Add self-loops with positive weights to a random subset of nodes.
+
+    Draws the subset size first, then draws exactly that many distinct nodes
+    without a redundant .filter() call (which could cause Hypothesis
+    HealthCheck.filter_too_much on small graphs).
+    """
     nodes = list(G.nodes())
     if not nodes:
         return G
-    cap = max_loops if max_loops is not None else len(nodes)
+    cap = min(max_loops if max_loops is not None else len(nodes), len(nodes))
     count = draw(st.integers(min_value=1, max_value=max(1, cap)))
+    # st.lists with unique=True and equal min/max_size produces exactly
+    # `count` distinct elements -- no filter needed.
     chosen = draw(st.lists(
         st.sampled_from(nodes), min_size=count, max_size=count, unique=True,
-    ).filter(lambda lst: len(lst) == count))
+    ))
     for v in chosen:
         w = draw(st.integers(min_value=min_weight, max_value=max_weight))
         G.add_edge(v, v, weight=w)
@@ -1546,12 +1572,13 @@ def test_bipartite_parity_of_distances(G_topo):
     This test is the sole consumer of bipartite_graph_topology; the
     strategy is excluded from ALL_TOPOLOGIES because the parity property
     requires the bipartite structure to be preserved and is vacuous on
-    general graphs.
+    general graphs.  The strategy guarantees connectivity for undirected
+    graphs so no assume() filter is needed here.
 
     Assumptions / preconditions:
       - The graph is undirected and bipartite (guaranteed by the strategy).
-      - The graph is connected (enforced by assume); disconnected pairs
-        have infinite distance and no parity to check.
+      - The graph is connected (guaranteed by the strategy's caterpillar
+        spanning tree; no assume() needed).
       - All edge weights are 1 so that distance equals hop count.
 
     Why failure matters: A parity violation would mean FW found a path
@@ -1560,8 +1587,6 @@ def test_bipartite_parity_of_distances(G_topo):
     counting hops.  In a graph where the exact parity is structurally
     determined this would be a fundamental reachability bug.
     """
-    assume(nx.is_connected(G_topo))
-
     G = G_topo.copy()
     for node_u, node_v in G.edges():
         G[node_u][node_v]["weight"] = 1
