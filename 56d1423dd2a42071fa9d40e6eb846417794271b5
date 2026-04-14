@@ -1,0 +1,25 @@
+brijgopalb@iisc.ac.in/test_floyd_warshall.py
+  41b41f5eda7d1b97 163-171,1514-1592
+brijgopalb@iisc.ac.in/README.md
+  41b41f5eda7d1b97 406,547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "56d1423dd2a42071fa9d40e6eb846417794271b5",
+  "prompts": {
+    "41b41f5eda7d1b97": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "d71e1bba-a68c-45b0-af95-9bedda6f9656",
+        "model": "copilot/claude-sonnet-4.6"
+      },
+      "human_author": "Brijgopal Bharadwaj",
+      "messages": [],
+      "total_additions": 92,
+      "total_deletions": 2,
+      "accepted_lines": 92,
+      "overriden_lines": 0
+    }
+  }
+}
